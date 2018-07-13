@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from .plugin_manager import PluginManager
 from .spy_utils import read_packet
 from traceback import format_exception
 
@@ -10,17 +11,20 @@ class ClientSideConnectionFactory:
         self.logger = logging.getLogger("starrypy.client_factory")
         self.logger.debug("Initialized client-side connection factory.")
         self.config_manager = config_manager
+        self.plugin_manager = PluginManager(self)
 
     def __call__(self, reader, writer):
         self.logger.debug("Establishing new connection.")
-        client = Client(reader, writer, self.config_manager)
+        client = Client(reader, writer, self)
         self.clients.append(client)
 
 
 class Client:
-    def __init__(self, reader, writer, config_manager):
+    def __init__(self, reader, writer, factory):
         self.logger = logging.getLogger("starrypy.client_listener")
-        self.config_manager = config_manager
+        self.factory = factory
+        self.config_manager = factory.config_manager
+        self.plugin_manager = factory.plugin_manager
         self._alive = True
         self._reader = reader
         self._writer = writer
@@ -43,7 +47,7 @@ class Client:
         try:
             while True:
                 packet = await read_packet(self._reader, 1)
-                if await self.hook_event(packet):
+                if (await self.plugin_manager.hook_event(packet, self)):
                     await self.write_to_server(packet)
         except asyncio.IncompleteReadError as e:
             exception_text = "\n".join(format_exception(*e))
@@ -66,7 +70,7 @@ class Client:
         try:
             while True:
                 packet = await read_packet(self._client_reader, 0)
-                if await self.hook_event(packet):
+                if (await self.plugin_manager.hook_event(packet, self)):
                     await self.write_to_client(packet)
         except (asyncio.IncompleteReadError, asyncio.CancelledError) as e:
             exception_text = "\n".join(format_exception(*e))
@@ -85,10 +89,6 @@ class Client:
 
     async def write_to_client(self, packet):
         await self.write_to_client_raw(packet['original_data'])
-
-    async def hook_event(self, packet):
-        # TODO: Replace dummy function
-        return True
 
     def die(self):
         if self._alive:
