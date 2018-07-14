@@ -3,7 +3,8 @@ import importlib.util
 import logging
 from inspect import getmembers, isclass, ismethod
 from pathlib import Path
-from starrypy.packet import PacketEnum
+from starrypy.enums import PacketType
+from starrypy.parser import parse_packet
 
 class PluginManager:
     def __init__(self, factory):
@@ -14,9 +15,9 @@ class PluginManager:
         self.plugins = {}
         self.active_plugins = set()
         self.inactive_plugins = set()
-        self.event_hooks = {str(packet): set() for packet in PacketEnum}
         self.load_from_path(Path(self.config_manager.config["system_plugin_path"]))
         self.load_from_path(Path(self.config_manager.config["user_plugin_path"]))
+        self.event_hooks = {str(packet): set() for packet in PacketType}
         self.resolve_dependencies()
         self.detect_event_hooks()
 
@@ -88,15 +89,17 @@ class PluginManager:
         self.logger.debug(f"Event hooks: {self.event_hooks}")
 
     async def hook_event(self, packet, connection):
-        event = str(PacketEnum(packet["type"]))
+        event = str(PacketType(packet["type"]))
         send_ahead = True
-        for func in self.event_hooks[event]:
-            try:
-                if not (await func(packet, connection)):
-                    send_ahead = False
-            except Exception:
-                self.logger.exception(f"Exception occurred in plugin {func.__self__.name} on event {event}.",
-                                      exc_info=True)
+        if self.event_hooks[event]:
+            packet = await parse_packet(packet)
+            for func in self.event_hooks[event]:
+                try:
+                    if not (await func(packet, connection)):
+                        send_ahead = False
+                except Exception:
+                    self.logger.exception(f"Exception occurred in plugin {func.__self__.name} on event {event}.",
+                                          exc_info=True)
         return send_ahead
 
     def __repr__(self):

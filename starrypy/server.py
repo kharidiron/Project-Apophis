@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from .plugin_manager import PluginManager
-from .spy_utils import read_packet
+from .packet import read_packet
 from traceback import format_exception
 
 class ClientSideConnectionFactory:
