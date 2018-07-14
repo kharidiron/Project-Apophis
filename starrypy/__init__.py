@@ -1,11 +1,15 @@
 import argparse
 import asyncio
 import logging
+import os
 import sys
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from .config_manager import ConfigManager
 from .server import ClientSideConnectionFactory
+
+
+__version__ = '3.0dev2'
 
 
 def main():
@@ -29,6 +33,12 @@ def main():
     aio_logger = logging.getLogger("asyncio")
     log_formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(name)s # %(message)s",
                                       datefmt='%Y-%m-%d %H:%M:%S')
+    if not args.config.exists():
+        os.makedirs(args.config)
+        os.makedirs(Path.home() / ".starrypy" / "plugins")
+        with open(Path.home() / ".starrypy" / "plugins" / "__init__.py", 'a'):
+            os.utime(Path.home() / ".starrypy" / "plugins" / "__init__.py", None)
+
     if not args.logfile.exists():
         args.logfile.touch()
     file_handler = RotatingFileHandler(args.logfile, maxBytes=1048576, backupCount=3, encoding="utf-8")

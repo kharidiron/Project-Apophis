@@ -15,7 +15,8 @@ class PluginManager:
         self.active_plugins = set()
         self.inactive_plugins = set()
         self.event_hooks = {str(packet): set() for packet in PacketEnum}
-        self.load_from_path(Path(self.config_manager.config["plugin_path"]))
+        self.load_from_path(Path(self.config_manager.config["system_plugin_path"]))
+        self.load_from_path(Path(self.config_manager.config["user_plugin_path"]))
         self.resolve_dependencies()
         self.detect_event_hooks()
 
