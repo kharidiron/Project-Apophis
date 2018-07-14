@@ -34,8 +34,8 @@ def parse_with_struct(stream, data_type):
     return s.unpack(stream.read(s.size))[0]
 
 
-def build_with_struct(obj, type):
-    return struct_cache[type].pack(obj)
+def build_with_struct(obj, data_type):
+    return struct_cache[data_type].pack(obj)
 
 
 def parse_vlq(stream):
@@ -85,8 +85,8 @@ def build_signed_vlq(obj):
 
 
 def parse_byte_array(stream):
-    l = parse_vlq(stream)
-    return stream.read(l)
+    array_len = parse_vlq(stream)
+    return stream.read(array_len)
 
 
 def build_byte_array(obj):
@@ -161,7 +161,6 @@ def build_json(obj):
     return res
 
 
-
 def parse_json_array(stream):
     array_len = parse_vlq(stream)
     return [parse_json(stream) for _ in range(array_len)]
@@ -187,26 +186,38 @@ def build_json_object(obj):
 
 # Specific packet parsing functions
 
+
 def parse_connect_success(stream, _):
-    res = {}
-    res["client_id"] = parse_vlq(stream)
-    res["server_uuid"] = parse_uuid(stream)
-    res["planet_orbital_levels"] = parse_with_struct(stream, "int32")
-    res["satellite_orbital_levels"] = parse_with_struct(stream, "int32")
-    res["chunk_size"] = parse_with_struct(stream, "int32")
-    res["xy_min"] = parse_with_struct(stream, "int32")
-    res["xy_max"] = parse_with_struct(stream, "int32")
-    res["z_min"] = parse_with_struct(stream, "int32")
-    res["z_max"] = parse_with_struct(stream, "int32")
+    res = {
+        "client_id": parse_vlq(stream),
+        "server_uuid": parse_uuid(stream),
+        "planet_orbital_levels": parse_with_struct(stream, "int32"),
+        "satellite_orbital_levels": parse_with_struct(stream, "int32"),
+        "chunk_size": parse_with_struct(stream, "int32"),
+        "xy_min": parse_with_struct(stream, "int32"),
+        "xy_max": parse_with_struct(stream, "int32"),
+        "z_min": parse_with_struct(stream, "int32"),
+        "z_max": parse_with_struct(stream, "int32")
+    }
     return res
 
 
 def build_connect_success(obj, _):
-    raise NotImplemented
+    res = [build_vlq(obj["client_id"]),
+           build_uuid(obj["server_uuid"]),
+           build_with_struct(obj["planet_orbital_levels"], "int32"),
+           build_with_struct(obj["satellite_orbital_levels"], "int32"),
+           build_with_struct(obj["chunk_size"], "int32"),
+           build_with_struct(obj["xy_min"], "int32"),
+           build_with_struct(obj["xy_max"], "int32"),
+           build_with_struct(obj["z_min"], "int32"),
+           build_with_struct(obj["z_max"], "int32")]
+    return b"".join(res)
 
 
 def parse_connect_failure(stream, _):
     return {"reason": parse_utf8_string(stream)}
+
 
 def build_connect_failure(obj, _):
     return build_utf8_string(obj["reason"])
@@ -230,35 +241,34 @@ try:
 except ImportError:
     pass
 
-zobj = zlib.compressobj()
 
 async def parse_packet(packet):
-    parse_funcs = parse_map.get(packet["type"], None)
+    parse_funcs = parse_map.get(packet.type, None)
     if parse_funcs is None:
-        packet["parsed_data"] = None
+        packet.parsed_data = {}
     else:
         try:
-            packet["parsed_data"] = parse_funcs[0](io.BytesIO(packet["data"]), packet["direction"])
+            packet.parsed_data = parse_funcs[0](io.BytesIO(packet.data), packet.direction)
         except IndexError:
-            packet["parsed_data"] = None
+            packet.parsed_data = {}
     return packet
 
 
 async def build_packet(packet):
-    parse_funcs = parse_map.get(packet["type"], None)
+    parse_funcs = parse_map.get(packet.type, None)
     if parse_funcs is None:
-        raise NotImplemented
+        raise NotImplementedError
     else:
         try:
-            packet["data"] = parse_funcs[1](packet["parsed_data"], packet["direction"])
-            packet["size"] = len(packet["data"])
-            if packet.get("compressed", False):
-                size_bytes = build_signed_vlq(-packet["size"])
-                data_bytes = zobj.compress(packet["data"])
+            packet.data = parse_funcs[1](packet.parsed_data, packet.direction)
+            packet.size = len(packet.data)
+            if packet.compressed:
+                size_bytes = build_signed_vlq(-packet.size)
+                data_bytes = zlib.compress(packet.data)
             else:
-                size_bytes = build_signed_vlq(packet["size"])
-                data_bytes = packet["data"]
-            packet["original_data"] = b"".join((build_byte(packet["type"]), size_bytes, data_bytes))
+                size_bytes = build_signed_vlq(packet.size)
+                data_bytes = packet.data
+            packet.original_data = b"".join((build_byte(packet.type), size_bytes, data_bytes))
         except IndexError:
-            raise NotImplemented
+            raise NotImplementedError
         return packet

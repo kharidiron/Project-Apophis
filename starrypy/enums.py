@@ -75,4 +75,4 @@ class PacketDirection(IntEnum):
     TO_CLIENT = 0
     TO_SERVER = 1
     FROM_CLIENT = 1
-    FROM_SERVER  = 0
+    FROM_SERVER = 0

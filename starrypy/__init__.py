@@ -19,7 +19,7 @@ def main():
                         help="Defines a custom path to the configuration directory.")
     parser.add_argument("-l", "--logfile", type=Path, default=(Path.home() / ".starrypy" / "starrypy.log"),
                         help="Defines a custom path to use for the log file.")
-    parser.add_argument("-m", "--maintenace", action="store_true", help="Currently non-functional.")
+    parser.add_argument("-m", "--maintenance", action="store_true", help="Currently non-functional.")
     parser.add_argument("--headless", action="store_true", help="Currently non-functional.")
 
     args = parser.parse_args()
@@ -55,14 +55,14 @@ def main():
 
     main_logger.info("Starting main loop.")
 
-    config_manager = ConfigManager(args)
-    client_factory = ClientSideConnectionFactory(config_manager)
+    config_mgr = ConfigManager(args)
+    client_factory = ClientSideConnectionFactory(config_mgr)
 
     try:
-        srv = asyncio.start_server(client_factory, port=config_manager.config['listen_port'])
+        srv = asyncio.start_server(client_factory, port=config_mgr.config['listen_port'])
         loop = asyncio.get_event_loop()
         loop.run_until_complete(srv)
         loop.run_forever()
-    except Exception as e:
+    except Exception:
         main_logger.exception("Exception occurred in main loop.", exc_info=True)
         sys.exit(1)

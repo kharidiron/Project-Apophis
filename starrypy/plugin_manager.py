@@ -4,7 +4,7 @@ import logging
 from inspect import getmembers, isclass, ismethod
 from pathlib import Path
 from starrypy.enums import PacketType
-from starrypy.parser import parse_packet
+
 
 class PluginManager:
     def __init__(self, factory):
@@ -91,10 +91,10 @@ class PluginManager:
         self.logger.debug(f"Event hooks: {self.event_hooks}")
 
     async def hook_event(self, packet, client):
-        event = PacketType(packet["type"])
+        event = PacketType(packet.type)
         send_ahead = True
         if self.event_hooks[event]:
-            packet = await parse_packet(packet)
+            packet = await packet.parse()
             for func in self.event_hooks[event]:
                 try:
                     if not (await func(packet, client)):
@@ -102,10 +102,14 @@ class PluginManager:
                 except Exception:
                     self.logger.exception(f"Exception occurred in plugin {func.__self__.name} on event {event}.",
                                           exc_info=True)
+            self.logger.debug("Building edited packet...")
+            await packet.build_edits()
+            self.logger.debug("Edited packet built.")
         return send_ahead
 
     def __repr__(self):
         return f"<PluginManager: Plugins: {self.plugins.keys()}, Active: {self.active_plugins}>"
+
 
 class BasePlugin:
     name = "base_plugin"

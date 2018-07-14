@@ -5,6 +5,7 @@ from .plugin_manager import PluginManager
 from .packet import read_packet
 from traceback import format_exception
 
+
 class ClientSideConnectionFactory:
     clients = []
 
@@ -48,7 +49,7 @@ class Client:
         try:
             while True:
                 packet = await read_packet(self._reader, PacketDirection.TO_SERVER)
-                if (await self.plugin_manager.hook_event(packet, self)):
+                if await self.plugin_manager.hook_event(packet, self):
                     await self.write_to_server(packet)
         except asyncio.IncompleteReadError as e:
             exception_text = "\n".join(format_exception(*e))
@@ -57,7 +58,7 @@ class Client:
             self.logger.warning("Connection ended abruptly.")
             exception_text = "\n".join(format_exception(*e))
             self.logger.debug(f"Connection cancellation details:\n{exception_text}")
-        except Exception as e:
+        except Exception:
             self.logger.exception("Exception occurred in server listener.", exc_info=True)
         finally:
             self.logger.debug(f"Closing server listener for IP {self.ip_address}.")
@@ -71,7 +72,7 @@ class Client:
         try:
             while True:
                 packet = await read_packet(self._client_reader, PacketDirection.TO_CLIENT)
-                if (await self.plugin_manager.hook_event(packet, self)):
+                if await self.plugin_manager.hook_event(packet, self):
                     await self.write_to_client(packet)
         except (asyncio.IncompleteReadError, asyncio.CancelledError) as e:
             exception_text = "\n".join(format_exception(*e))
@@ -86,10 +87,10 @@ class Client:
         await self._writer.drain()
 
     async def write_to_server(self, packet):
-        await self.write_to_server_raw(packet['original_data'])
+        await self.write_to_server_raw(packet.original_data)
 
     async def write_to_client(self, packet):
-        await self.write_to_client_raw(packet['original_data'])
+        await self.write_to_client_raw(packet.original_data)
 
     def die(self):
         if self._alive:

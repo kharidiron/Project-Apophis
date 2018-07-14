@@ -4,7 +4,6 @@ from pathlib import Path
 from shutil import copyfile
 
 
-
 class ConfigManager:
     def __init__(self, argv):
         self.argv = argv
