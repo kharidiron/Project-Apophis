@@ -31,8 +31,8 @@ class Client:
         self._client_reader = None
         self._client_writer = None
         self.client_loop = None
-        self.client_ip = reader._transport.get_extra_info("peername")[0]
-        self.logger.info(f"Connection established from IP {self.client_ip}.")
+        self.ip_address = reader._transport.get_extra_info("peername")[0]
+        self.logger.info(f"Connection established from IP {self.ip_address}.")
 
         self.server_loop = asyncio.create_task(self.server_listener())
 
@@ -59,7 +59,7 @@ class Client:
         except Exception as e:
             self.logger.exception("Exception occurred in server listener.", exc_info=True)
         finally:
-            self.logger.debug(f"Closing server listener for IP {self.client_ip}.")
+            self.logger.debug(f"Closing server listener for IP {self.ip_address}.")
             self.client_loop.cancel()
             self.die()
 
@@ -93,7 +93,7 @@ class Client:
     def die(self):
         if self._alive:
             if hasattr(self, "player"):
-                self.logger.info(f"Removing player {self.player.name} at IP {self.client_ip}.")
+                self.logger.info(f"Removing player {self.player.name} at IP {self.ip_address}.")
             else:
-                self.logger.info(f"Removing connection from IP {self.client_ip}.")
+                self.logger.info(f"Removing connection from IP {self.ip_address}.")
 

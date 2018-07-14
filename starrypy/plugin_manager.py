@@ -17,7 +17,7 @@ class PluginManager:
         self.inactive_plugins = set()
         self.load_from_path(Path(self.config_manager.config["system_plugin_path"]))
         self.load_from_path(Path(self.config_manager.config["user_plugin_path"]))
-        self.event_hooks = {str(packet): set() for packet in PacketType}
+        self.event_hooks = {packet: [] for packet in PacketType}
         self.resolve_dependencies()
         self.detect_event_hooks()
 
@@ -82,20 +82,22 @@ class PluginManager:
 
     def detect_event_hooks(self):
         for plg in self.plugins.values():
-            hooks = getmembers(plg, lambda x: ismethod(x) and x.__name__ in self.event_hooks)
+            hooks = getmembers(plg, lambda x: ismethod(x) and hasattr(x, "event"))
             self.logger.debug(hooks)
             for i in hooks:
-                self.event_hooks[i[0]].add(i[1])
+                self.event_hooks[i[1].event].append(i[1])
+        for hooks in self.event_hooks.values():
+            hooks.sort(key=lambda x: x.priority, reverse=True)
         self.logger.debug(f"Event hooks: {self.event_hooks}")
 
-    async def hook_event(self, packet, connection):
-        event = str(PacketType(packet["type"]))
+    async def hook_event(self, packet, client):
+        event = PacketType(packet["type"])
         send_ahead = True
         if self.event_hooks[event]:
             packet = await parse_packet(packet)
             for func in self.event_hooks[event]:
                 try:
-                    if not (await func(packet, connection)):
+                    if not (await func(packet, client)):
                         send_ahead = False
                 except Exception:
                     self.logger.exception(f"Exception occurred in plugin {func.__self__.name} on event {event}.",
