@@ -1,5 +1,6 @@
 import io
 import struct
+import zlib
 from binascii import hexlify, unhexlify
 from .enums import PacketType
 
@@ -229,11 +230,35 @@ try:
 except ImportError:
     pass
 
+zobj = zlib.compressobj()
 
 async def parse_packet(packet):
     parse_funcs = parse_map.get(packet["type"], None)
     if parse_funcs is None:
         packet["parsed_data"] = None
     else:
-        packet["parsed_data"] = parse_funcs[0](io.BytesIO(packet["data"]), packet["direction"])
+        try:
+            packet["parsed_data"] = parse_funcs[0](io.BytesIO(packet["data"]), packet["direction"])
+        except IndexError:
+            packet["parsed_data"] = None
     return packet
+
+
+async def build_packet(packet):
+    parse_funcs = parse_map.get(packet["type"], None)
+    if parse_funcs is None:
+        raise NotImplemented
+    else:
+        try:
+            packet["data"] = parse_funcs[1](packet["parsed_data"], packet["direction"])
+            packet["size"] = len(packet["data"])
+            if packet.get("compressed", False):
+                size_bytes = build_signed_vlq(-packet["size"])
+                data_bytes = zobj.compress(packet["data"])
+            else:
+                size_bytes = build_signed_vlq(packet["size"])
+                data_bytes = packet["data"]
+            packet["original_data"] = b"".join((build_byte(packet["type"]), size_bytes, data_bytes))
+        except IndexError:
+            raise NotImplemented
+        return packet

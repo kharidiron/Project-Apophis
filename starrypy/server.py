@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from .enums import PacketDirection
 from .plugin_manager import PluginManager
 from .packet import read_packet
 from traceback import format_exception
@@ -46,7 +47,7 @@ class Client:
         self.client_loop = asyncio.create_task(self.client_listener())
         try:
             while True:
-                packet = await read_packet(self._reader, 1)
+                packet = await read_packet(self._reader, PacketDirection.TO_SERVER)
                 if (await self.plugin_manager.hook_event(packet, self)):
                     await self.write_to_server(packet)
         except asyncio.IncompleteReadError as e:
@@ -69,7 +70,7 @@ class Client:
         """
         try:
             while True:
-                packet = await read_packet(self._client_reader, 0)
+                packet = await read_packet(self._client_reader, PacketDirection.TO_CLIENT)
                 if (await self.plugin_manager.hook_event(packet, self)):
                     await self.write_to_client(packet)
         except (asyncio.IncompleteReadError, asyncio.CancelledError) as e:

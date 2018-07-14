@@ -70,5 +70,9 @@ class PacketType(IntEnum):
     SYSTEM_SHIP_DESTROY = 64
     SYSTEM_OBJECT_SPAWN = 65
 
-    def __str__(self):
-        return f"on_{self.name.lower()}"
+
+class PacketDirection(IntEnum):
+    TO_CLIENT = 0
+    TO_SERVER = 1
+    FROM_CLIENT = 1
+    FROM_SERVER  = 0

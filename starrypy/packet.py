@@ -2,6 +2,8 @@ import asyncio
 import zlib
 from .spy_utils import read_vlq_signed
 
+zobj = zlib.decompressobj()
+
 
 async def read_packet(stream, direction):
     """
@@ -30,7 +32,6 @@ async def read_packet(stream, direction):
         p['data'] = data
     else:
         try:
-            zobj = zlib.decompressobj()
             p['data'] = zobj.decompress(data)
         except zlib.error:
             raise asyncio.IncompleteReadError
