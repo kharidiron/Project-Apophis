@@ -16,7 +16,9 @@ struct_cache = {
     "int64": struct.Struct(">q"),
     "float": struct.Struct(">f"),
     "double": struct.Struct(">d"),
-    "vec2f": struct.Struct(">2f")
+    "vec2f": struct.Struct(">2f"),
+    "vec2i": struct.Struct(">2l"),
+    "vec3i": struct.Struct(">3l")
 }
 
 # Basic data type parsing
@@ -32,7 +34,6 @@ def build_byte(obj):
 
 def parse_with_struct(stream, data_type):
     s = struct_cache[data_type]
-    print(f"{s.format} requires {s.size} bytes")
     unpacked = s.unpack(stream.read(s.size))
     if len(unpacked) == 1:  # Don't return a tuple if there's only one element
         unpacked = unpacked[0]
@@ -218,13 +219,8 @@ def parse_chat_header(stream):
 def parse_world_chunks(stream):
     # I'll be honest, I've not a damned clue what's going on in this thing.
     array_len = parse_vlq(stream)
-    chunks = []
-    chunk_count = 0
-    for _ in range(array_len):
-        array1 = parse_byte_array(stream)
-        separator = parse_byte(stream)
-        array2 = parse_byte_array(stream)
-        chunks.append((chunk_count, array1, array2))
+    chunks = [(i, parse_byte_array(stream), parse_byte(stream), parse_byte_array(stream))
+              for i in range(array_len)]
     return {"length": array_len, "contents": chunks}
 
 # Specific packet parsing functions
@@ -245,10 +241,8 @@ def parse_connect_success(stream, _):
         "planet_orbital_levels": parse_with_struct(stream, "int32"),
         "satellite_orbital_levels": parse_with_struct(stream, "int32"),
         "chunk_size": parse_with_struct(stream, "int32"),
-        "xy_min": parse_with_struct(stream, "int32"),
-        "xy_max": parse_with_struct(stream, "int32"),
-        "z_min": parse_with_struct(stream, "int32"),
-        "z_max": parse_with_struct(stream, "int32")
+        "xy_coord_range": parse_with_struct(stream, "vec2i"),
+        "z_coord_range": parse_with_struct(stream, "vec2i")
     }
 
 
@@ -259,10 +253,8 @@ def build_connect_success(obj, _):
         build_with_struct(obj["planet_orbital_levels"], "int32"),
         build_with_struct(obj["satellite_orbital_levels"], "int32"),
         build_with_struct(obj["chunk_size"], "int32"),
-        build_with_struct(obj["xy_min"], "int32"),
-        build_with_struct(obj["xy_max"], "int32"),
-        build_with_struct(obj["z_min"], "int32"),
-        build_with_struct(obj["z_max"], "int32")
+        build_with_struct(obj["xy_coord_range"], "vec2i"),
+        build_with_struct(obj["z_coord_range"], "vec2i")
     ]
     return b"".join(res)
 

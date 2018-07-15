@@ -94,7 +94,12 @@ class PluginManager:
         event = PacketType(packet.type)
         send_ahead = True
         if self.event_hooks[event]:
-            packet = await packet.parse()
+            try:
+                packet = await packet.parse()
+            except NotImplementedError:
+                self.logger.debug(f"Packet of type {event.name} is not implemented.")
+            except Exception:
+                self.logger.exception(f"Packet of type {event.name} could not be parsed!", exc_info=True)
             for func in self.event_hooks[event]:
                 try:
                     if not (await func(packet, client)):
@@ -102,9 +107,7 @@ class PluginManager:
                 except Exception:
                     self.logger.exception(f"Exception occurred in plugin {func.__self__.name} on event {event}.",
                                           exc_info=True)
-            self.logger.debug("Building edited packet...")
             await packet.build_edits()
-            self.logger.debug("Edited packet built.")
         return send_ahead
 
     def __repr__(self):
