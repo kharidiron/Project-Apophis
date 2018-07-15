@@ -1,5 +1,6 @@
 import asyncio
 import zlib
+from .enums import PacketType, PacketDirection
 from .parser import parse_packet, build_packet
 from .spy_utils import read_vlq_signed
 
@@ -29,6 +30,9 @@ class Packet:
         if self.edited_data:
             self.parsed_data.update(self.edited_data)
             await self.build()
+
+    def __repr__(self):
+        return f"<Packet type={PacketType(self.type)} direction={PacketDirection(self.direction)}>"
 
 
 async def read_packet(stream, direction):
