@@ -1,4 +1,9 @@
 async def read_vlq(stream):
+    """
+    Reads a VLQ from a stream, and returns both the parsed value and the bytes belonging to it.
+    :param stream: A stream object, with readexactly() defined.
+    :return: int, bytes: The parsed value and unparsed value of the VLQ.
+    """
     raw_bytes = b""
     value = 0
     while True:
@@ -15,6 +20,11 @@ async def read_vlq(stream):
 
 
 async def read_vlq_signed(stream):
+    """
+    Much like read_vlq, but accounts for signedness.
+    :param stream: A stream object, with readexactly() defined.
+    :return: int, bytes: The parsed value and unparsed value of the VLQ.
+    """
     value, raw_bytes = await read_vlq(stream)
     if (value & 1) == 0x00:
         return value >> 1, raw_bytes

@@ -6,8 +6,8 @@ from .spy_utils import read_vlq_signed
 
 
 class Packet:
-    def __init__(self, packet_type, data, direction,
-                 size=None, compressed=False, original_data=None, parsed_data=None):
+    def __init__(self, packet_type: int, data: bytes, direction: int,
+                 size: int=None, compressed=False, original_data: bytes=None, parsed_data: dict=None):
         self.type = packet_type
         self.size = size
         self.compressed = compressed
@@ -43,7 +43,7 @@ async def read_packet(stream, direction):
     for further processing down the line.
     :param stream: Stream from which to read the packet.
     :param direction: Destination for the packet (SERVER or CLIENT).
-    :return: Dictionary. Contains both raw and decoded versions of the packet.
+    :return: Packet: Contains both raw and decoded versions of the packet.
     """
     compressed = False
 

@@ -4,7 +4,7 @@ class EventHook:
     sorting priority. Otherwise doesn't do anything by itself.
     """
 
-    def __init__(self, event, priority=0):
+    def __init__(self, event: int, priority: int=0):
         self.event = event
         self.priority = priority
 
