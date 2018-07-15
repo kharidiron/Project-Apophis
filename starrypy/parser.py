@@ -2,8 +2,10 @@ import io
 import struct
 import zlib
 from binascii import hexlify, unhexlify
+
 from .enums import PacketType
-from .packet import Packet
+# from .packet import Packet
+
 
 # Some structs, pre-built for performance
 
@@ -423,7 +425,7 @@ except ImportError:
     pass
 
 
-async def parse_packet(packet: Packet):
+async def parse_packet(packet):
     """
     Takes an input packet, parses it, and returns the packet with the parsed data attached.
     :param packet: A Packet object.
@@ -440,7 +442,7 @@ async def parse_packet(packet: Packet):
     return packet
 
 
-async def build_packet(packet: Packet):
+async def build_packet(packet):
     """
     Takes an input packet and builds a new raw data string out of the parsed data attached.
     :param packet: A Packet object that's been parsed.
