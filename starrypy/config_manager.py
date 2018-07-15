@@ -13,6 +13,7 @@ class ConfigManager:
         self.logger = logging.getLogger("starrypy.config_manager")
         self.logger.debug("Initialized config manager.")
         self.config = self.load_config()
+        self.config["config_path"] = self.config_path.parents[0]
         self.config["system_plugin_path"] = Path(__file__).parents[0] / "plugins"
         self.config["user_plugin_path"] = self.config_path.parents[0] / "plugins"
 

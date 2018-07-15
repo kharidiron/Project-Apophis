@@ -5,11 +5,12 @@ import os
 import sys
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
+
 from .config_manager import ConfigManager
 from .server import ClientSideConnectionFactory
 
 
-__version__ = '3.0dev2'
+__version__ = '3.0dev4'
 
 
 def main():

@@ -1,9 +1,12 @@
 import asyncio
 import logging
+from traceback import format_exception
+
 from .enums import PacketDirection
 from .plugin_manager import PluginManager
 from .packet import read_packet
-from traceback import format_exception
+from .storage_manager import StorageManager
+from .player_manager import PlayerManager
 
 
 class ClientSideConnectionFactory:
@@ -13,7 +16,9 @@ class ClientSideConnectionFactory:
         self.logger = logging.getLogger("starrypy.client_factory")
         self.logger.debug("Initialized client-side connection factory.")
         self.config_manager = config_manager
+        self.storage_manager = StorageManager(self)
         self.plugin_manager = PluginManager(self)
+        self.player_manager = PlayerManager(self)
 
     def __call__(self, reader, writer):
         self.logger.debug("Establishing new connection.")
@@ -26,7 +31,9 @@ class Client:
         self.logger = logging.getLogger("starrypy.client_listener")
         self.factory = factory
         self.config_manager = factory.config_manager
+        self.storage_manager = factory.storage_manager
         self.plugin_manager = factory.plugin_manager
+        self.player_manager = factory.player_manager
         self._alive = True
         self._reader = reader
         self._writer = writer

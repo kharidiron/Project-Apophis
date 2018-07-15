@@ -3,7 +3,8 @@ import importlib.util
 import logging
 from inspect import getmembers, isclass, ismethod
 from pathlib import Path
-from starrypy.enums import PacketType
+
+from .enums import PacketType
 
 
 class PluginManager:
