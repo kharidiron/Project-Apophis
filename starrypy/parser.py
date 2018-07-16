@@ -244,11 +244,20 @@ def parse_chat_header(stream: io.BytesIO):
     res = {"mode": parse_byte(stream)}
     if res["mode"] > 1:
         res["channel"] = parse_utf8_string(stream)
-        res["client_id"] = parse_with_struct(stream, "uint16")
     else:
         res["channel"] = ""
         res["unknown"] = parse_byte(stream)  # Spooky
-        res["client_id"] = parse_with_struct(stream, "uint16")
+    res["client_id"] = parse_with_struct(stream, "uint16")
+    return res
+
+
+def build_chat_header(obj: dict):
+    res = build_byte(obj["mode"])
+    if obj["mode"] > 1:
+        res += build_utf8_string(obj["channel"])
+    else:
+        res += build_byte(obj["unknown"])
+    res += build_with_struct(obj["client_id"], "uint16")
     return res
 
 
@@ -381,6 +390,8 @@ def build_warp_action(obj: dict):
 
 def parse_world_chunks(stream: io.BytesIO):
     # I'll be honest, I've not a damned clue what's going on in this thing.
+    # And honestly, it's doubtful we'll need any more parsing than this;
+    # Python is simply too slow for us to be parsing tile arrays and such
     array_len = parse_vlq(stream)
     chunks = [(i, parse_byte_array(stream), parse_byte(stream), parse_byte_array(stream))
               for i in range(array_len)]
@@ -470,11 +481,39 @@ def parse_chat_received(stream: io.BytesIO, _):
         "message": parse_utf8_string(stream)
     }
 
+
+def build_chat_received(obj: dict, _):
+    res = build_chat_header(obj["header"])
+    res += build_utf8_string(obj["name"])
+    res += build_byte(obj["junk"])
+    res += build_utf8_string(obj["message"])
+    return res
+
 # - Universe time update
 
 
 def parse_universe_time_update(stream: io.BytesIO, _):
     return {"timestamp": parse_with_struct(stream, "double")}
+
+
+def build_universe_time_update(obj: dict, _):
+    return build_with_struct(obj["timestamp"], "double")
+
+# - Player warp result
+
+
+def parse_player_warp_result(stream: io.BytesIO, _):
+    return {
+        "success": parse_with_struct(stream, "bool"),
+        "warp_action": parse_warp_action(stream),
+        "warp_action_invalid": parse_with_struct(stream, "bool")
+    }
+
+
+def build_player_warp_result(obj: dict, _):
+    res = build_with_struct(obj["success"], "bool")
+    res += build_warp_action(obj["warp_action"])
+    return res + build_with_struct(obj["warp_action_invalid"], "bool")
 
 # Universe client to server
 # - Client connect
@@ -506,6 +545,44 @@ def parse_client_connect(stream: io.BytesIO, _):
 def parse_handshake_response(stream: io.BytesIO, _):
     return {"password_hash": parse_byte_array(stream)}
 
+# - Player warp-
+
+def parse_player_warp(stream: io.BytesIO, _):
+    return {
+        "warp_action": parse_warp_action(stream),
+        "deploy": parse_with_struct(stream, "bool")
+    }
+
+
+def build_player_warp(obj: dict, _):
+    return build_warp_action(obj["warp_action"]) + build_with_struct(obj["deploy"], "bool")
+
+# - Fly ship
+
+
+def parse_fly_ship(stream: io.BytesIO, _):
+    return {
+        "system": parse_with_struct(stream, "vec3i"),
+        "location": parse_system_location(stream)
+    }
+
+
+def build_fly_ship(obj: dict, _):
+    return build_with_struct(obj["system"], "vec3i") + build_system_location(obj["location"])
+
+# - Chat send
+
+
+def parse_chat_send(stream: io.BytesIO, _):
+    return {
+        "text": parse_utf8_string(stream),
+        "send_mode": parse_byte(stream)
+    }
+
+
+def build_chat_send(obj: dict, _):
+    return build_utf8_string(obj["text"]) + build_byte(obj["send_mode"])
+
 # World server to client
 # - World Start
 
@@ -528,6 +605,19 @@ def parse_world_start(stream: io.BytesIO, _):
         "local_interpolation_mode": parse_with_struct(stream, "bool")
     }
 
+# - Give item
+
+def parse_give_item(stream: io.BytesIO, _):
+    return {
+        "name": parse_utf8_string(stream),
+        "count": parse_vlq(stream),
+        "parameters": parse_json(stream)
+    }
+
+
+def build_give_item(obj: dict, _):
+    return build_utf8_string(obj["name"]) + build_vlq(obj["count"]) + build_json(obj["parameters"])
+
 # World bidirectional
 # - Step update
 
@@ -548,10 +638,13 @@ parse_map = {
     PacketType.CONNECT_SUCCESS: (parse_connect_success, build_connect_success),
     PacketType.CONNECT_FAILURE: (parse_connect_failure, build_connect_failure),
     PacketType.HANDSHAKE_CHALLENGE: (parse_handshake_challenge, None),
-    PacketType.CHAT_RECEIVED: (parse_chat_received, None),
-    PacketType.UNIVERSE_TIME_UPDATE: (parse_universe_time_update, None),
+    PacketType.CHAT_RECEIVED: (parse_chat_received, build_chat_received),
+    PacketType.UNIVERSE_TIME_UPDATE: (parse_universe_time_update, build_universe_time_update),
+    PacketType.PLAYER_WARP_RESULT: (parse_player_warp_result, build_player_warp_result),
+    PacketType.FLY_SHIP: (parse_fly_ship, build_fly_ship),
     PacketType.CLIENT_CONNECT: (parse_client_connect, None),
     PacketType.HANDSHAKE_RESPONSE: (parse_handshake_response, None),
+    PacketType.PLAYER_WARP: (parse_player_warp, build_player_warp),
     PacketType.WORLD_START: (parse_world_start, None),
     PacketType.STEP_UPDATE: (parse_step_update, None)
 }
