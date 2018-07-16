@@ -85,3 +85,29 @@ class PacketDirection(IntEnum):
     TO_SERVER = 1
     FROM_CLIENT = 1
     FROM_SERVER = 0
+
+
+class SystemLocationType(IntEnum):
+    SYSTEM = 0
+    COORDINATE = 1
+    ORBIT = 2
+    UUID = 3
+    LOCATION = 4
+
+
+class WarpType(IntEnum):
+    TO_WORLD = 1
+    TO_PLAYER = 2
+    TO_ALIAS = 3
+
+
+class WarpWorldType(IntEnum):
+    CELESTIAL_WORLD = 1
+    SHIP_WORLD = 2
+    UNIQUE_WORLD = 3
+
+
+class WarpAliasType(IntEnum):
+    RETURN = 0
+    ORBITED = 1
+    SHIP = 2

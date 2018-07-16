@@ -2,7 +2,7 @@ import io
 import struct
 import zlib
 from binascii import hexlify, unhexlify
-from .enums import PacketType
+from .enums import PacketType, WarpType, WarpWorldType, SystemLocationType
 from .packet import Packet
 
 # Some structs, pre-built for performance
@@ -19,6 +19,7 @@ struct_cache = {
     "double": struct.Struct(">d"),
     "vec2f": struct.Struct(">2f"),
     "vec2i": struct.Struct(">2l"),
+    "vec2ui": struct.Struct(">2L"),
     "vec3i": struct.Struct(">3l")
 }
 
@@ -188,40 +189,55 @@ def build_json(obj):
 
 
 def parse_json_array(stream: io.BytesIO):
-    array_len = parse_vlq(stream)
-    return [parse_json(stream) for _ in range(array_len)]
+    return parse_set(stream, parse_json)
 
 
 def build_json_array(obj: list):
-    res = build_vlq(len(obj))
-    res += b"".join(build_json(x) for x in obj)
-    return res
+    return build_set(obj, build_json)
 
 
 def parse_json_object(stream: io.BytesIO):
-    obj_len = parse_vlq(stream)
-    return dict((parse_utf8_string(stream), parse_json(stream)) for _ in range(obj_len))
+    return parse_hashmap(stream, parse_utf8_string, parse_json)
 
 
 def build_json_object(obj: dict):
-    res = build_vlq(len(obj))
-    key_list = (build_utf8_string(x) for x in obj.keys())
-    val_list = (build_json(x) for x in obj.values())
-    res += b"".join(zip(key_list, val_list))
-    return res
+    return build_hashmap(obj, build_utf8_string, build_json)
 
 # Higher-level data object parsing functions
 
+def parse_maybe(stream, data_type: function):
+    if parse_with_struct(stream, "bool"):
+        return data_type(stream)
+    return None
 
-def parse_set(stream: io.BytesIO, data_type: str):
+
+def build_maybe(obj, data_type: function):
+    if obj is not None:
+        return build_with_struct(True, "bool") + data_type(obj)
+    return build_with_struct(False, "bool")
+
+
+def parse_set(stream: io.BytesIO, data_type: function):
     set_len = parse_vlq(stream)
-    return [parse_with_struct(stream, data_type) for _ in range(set_len)]
+    return [data_type(stream) for _ in range(set_len)]
 
 
-def parse_hashmap(stream: io.BytesIO, key_type: str, value_type: str):
+def build_set(obj: list, data_type: function):
+    res = build_vlq(len(obj))
+    return res + b"".join(data_type(x) for x in obj)
+
+
+def parse_hashmap(stream: io.BytesIO, key_type: function, value_type: function):
     map_len = parse_vlq(stream)
-    return dict((parse_with_struct(stream, key_type), parse_with_struct(stream, value_type))
-                 for _ in range(map_len))
+    return dict((key_type(stream), value_type(stream)) for _ in range(map_len))
+
+
+def build_hashmap(obj: dict, key_type: function, value_type: function):
+    res = build_vlq(len(obj))
+    key_list = (key_type(x) for x in obj.keys())
+    val_list = (value_type(x) for x in obj.values())
+    # noinspection PyTypeChecker
+    return b"".join(zip(key_list, val_list))
 
 
 def parse_chat_header(stream: io.BytesIO):
@@ -233,6 +249,133 @@ def parse_chat_header(stream: io.BytesIO):
         res["channel"] = ""
         res["unknown"] = parse_byte(stream)  # Spooky
         res["client_id"] = parse_with_struct(stream, "uint16")
+    return res
+
+
+def parse_celestial_coordinates(stream: io.BytesIO):
+    return {
+        "coordinates": parse_with_struct(stream, "vec3i"),
+        "planet": parse_with_struct(stream, "int32"),
+        "satellite": parse_with_struct(stream, "int32")
+    }
+
+def build_celestial_coordinates(obj: dict):
+    return b"".join((build_with_struct(obj["coordinates"], "vec3i"),
+                     build_with_struct(obj["planet"], "int32"),
+                     build_with_struct(obj["satellite"], "int32")))
+
+
+def parse_system_location(stream: io.BytesIO):
+    dest_type = parse_byte(stream)
+    res = {"type": dest_type}
+    if dest_type == SystemLocationType.SYSTEM:
+        pass
+    elif dest_type == SystemLocationType.COORDINATE:
+        res["coordinates"] = parse_celestial_coordinates(stream)
+    elif dest_type == SystemLocationType.ORBIT:
+        res["coordinates"] = parse_celestial_coordinates(stream)
+        res["direction"] = parse_with_struct(stream, "int32")
+        res["enter_time"] = parse_with_struct(stream, "double")
+        res["enter_position"] = parse_with_struct(stream, "vec2f")
+    elif dest_type == SystemLocationType.UUID:
+        res["destination_id"] = parse_uuid(stream)
+    elif dest_type == SystemLocationType.LOCATION:
+        res["location"] = parse_with_struct(stream, "vec2f")
+    else:
+        raise TypeError(f"System location type {dest_type} is not defined for parsing!")
+    return res
+
+
+def build_system_location(obj: dict):
+    dest_type = obj["type"]
+    res = build_byte(dest_type)
+    if dest_type == SystemLocationType.SYSTEM:
+        pass
+    elif dest_type == SystemLocationType.COORDINATE:
+        res += build_celestial_coordinates(obj["coordinates"])
+    elif dest_type == SystemLocationType.ORBIT:
+        orbit_li = (
+            build_celestial_coordinates(obj["coordinates"]),
+            build_with_struct(obj["direction"], "int32"),
+            build_with_struct(obj["enter_time"], "double"),
+            build_with_struct(obj["enter_position"], "vec2f")
+        )
+        res += b"".join(orbit_li)
+    elif dest_type == SystemLocationType.UUID:
+        res += build_uuid(obj["destination_id"])
+    elif dest_type == SystemLocationType.LOCATION:
+        res += build_with_struct(obj["location"], "vec2f")
+    else:
+        raise TypeError(f"System location type {dest_type} is not defined for parsing!")
+    return res
+
+
+def parse_warp_action(stream: io.BytesIO):
+    warp_type = parse_byte(stream)
+    res = {"warp_type": warp_type}
+
+    if warp_type == WarpType.TO_WORLD:
+        world_type = parse_byte(stream)
+        res["world_type"] = world_type
+        if world_type == WarpWorldType.CELESTIAL_WORLD:
+            res["celestial_coordinates"] = parse_celestial_coordinates(stream)
+            res["teleporter"] = parse_maybe(stream, parse_utf8_string)
+        elif world_type == WarpWorldType.SHIP_WORLD:
+            res["ship_owner"] = parse_uuid(stream)
+            res["start_position"] = parse_maybe(stream, lambda x: parse_with_struct(x, "vec2ui"))
+        elif world_type == WarpWorldType.UNIQUE_WORLD:
+            res["world_name"] = parse_utf8_string(stream)
+            res["instance_id"] = parse_maybe(stream, parse_uuid)
+            res["level"] = parse_maybe(stream, lambda x: parse_with_struct(x, "float"))
+            res["teleporter_id"] = parse_maybe(stream, parse_utf8_string)
+        else:
+            raise TypeError(f"World warp type {world_type} is not defined for parsing!")
+
+    elif warp_type == WarpType.TO_PLAYER:
+        res["player_id"] = parse_uuid(stream)
+
+    elif warp_type == WarpType.TO_ALIAS:
+        res["alias_type"] = parse_with_struct(stream, "int32")
+
+    else:
+        raise TypeError(f"Warp type {warp_type} is not defined for parsing!")
+
+    return res
+
+
+def build_warp_action(obj: dict):
+    warp_type = obj["warp_type"]
+    res = build_byte(warp_type)
+
+    if warp_type == WarpType.TO_WORLD:
+        world_type = obj["world_type"]
+        res += build_byte(world_type)
+        if world_type == WarpWorldType.CELESTIAL_WORLD:
+            res += build_celestial_coordinates(obj["celestial_coordinates"])
+            res += build_maybe(obj["teleporter"], build_utf8_string)
+        elif world_type == WarpWorldType.SHIP_WORLD:
+            res += build_uuid(obj["ship_owner"])
+            res += build_maybe(obj["start_position"], lambda x: build_with_struct(x, "vec2ui"))
+        elif world_type == WarpWorldType.UNIQUE_WORLD:
+            data_li = (
+                build_utf8_string(obj["world_name"]),
+                build_maybe(obj["instance_id"], build_uuid),
+                build_maybe(obj["level"], lambda x: build_with_struct(x, "float")),
+                build_maybe(obj["teleporter_id"], build_utf8_string)
+            )
+            res += b"".join(data_li)
+        else:
+            raise TypeError(f"World warp type {world_type} is not defined for parsing!")
+
+    elif warp_type == WarpType.TO_PLAYER:
+        res += build_uuid(obj["player_id"])
+
+    elif warp_type == WarpType.TO_ALIAS:
+        res += build_with_struct(obj["alias_type"], "int32")
+
+    else:
+        raise TypeError(f"Warp type {warp_type} is not defined for parsing!")
+
     return res
 
 
@@ -376,9 +519,11 @@ def parse_world_start(stream: io.BytesIO, _):
         "player_respawn": parse_with_struct(stream, "vec2f"),
         "respawn_in_world": parse_with_struct(stream, "bool"),
         "world_properties": parse_json(stream),
-        "dungeon_id_gravity": parse_hashmap(stream, "uint16", "float"),
-        "dungeon_id_breathable": parse_hashmap(stream, "uint16", "bool"),
-        "protected_dungeon_ids": parse_set(stream, "uint16"),
+        "dungeon_id_gravity": parse_hashmap(stream, lambda x: parse_with_struct(x, "uint16"),
+                                            lambda x: parse_with_struct(x, "float")),
+        "dungeon_id_breathable": parse_hashmap(stream, lambda x: parse_with_struct(x, "uint16"),
+                                               lambda x: parse_with_struct(x, "bool")),
+        "protected_dungeon_ids": parse_set(stream, lambda x: parse_with_struct(x, "uint16")),
         "client_id": parse_with_struct(stream, "uint16"),
         "local_interpolation_mode": parse_with_struct(stream, "bool")
     }
