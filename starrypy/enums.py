@@ -130,7 +130,7 @@ class ChatReceiveMode(IntEnum):
 
 
 class DamageType(IntEnum):
-    NO_DAMAGE = 0 # Assumed
+    NO_DAMAGE = 0  # Assumed
     DAMAGE = 1
     IGNORES_DEF = 2
     KNOCKBACK = 3

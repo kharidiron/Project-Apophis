@@ -33,6 +33,7 @@ class Client:
         self._client_reader = None
         self._client_writer = None
         self.client_loop = None
+        # noinspection PyProtectedMember
         self.ip_address = reader._transport.get_extra_info("peername")[0]
         self.logger.info(f"Connection established from IP {self.ip_address}.")
 
@@ -46,6 +47,7 @@ class Client:
         self._client_reader, self._client_writer = await asyncio.open_connection(conf["upstream_host"],
                                                                                  conf["upstream_port"])
         self.client_loop = asyncio.create_task(self.client_listener())
+        # noinspection PyBroadException
         try:
             while True:
                 packet = await read_packet(self._reader, PacketDirection.TO_SERVER)
@@ -90,6 +92,7 @@ class Client:
                 "client_id": client_id
             }
         }
+        # noinspection PyBroadException
         try:
             msg_packet = await Packet.from_parsed(PacketType.CHAT_RECEIVED, packet_data,
                                                   direction=PacketDirection.TO_CLIENT)

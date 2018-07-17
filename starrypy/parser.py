@@ -249,7 +249,7 @@ def build_hashmap(obj: Dict, key_type: Callable[[Hashable], bytes],
     key_list = (key_type(x) for x in obj.keys())
     val_list = (value_type(x) for x in obj.values())
     # noinspection PyTypeChecker
-    return b"".join(zip(key_list, val_list))
+    return res + b"".join(zip(key_list, val_list))
 
 
 def parse_chat_header(stream: BinaryIO) -> Dict:
@@ -657,6 +657,7 @@ parse_map = {
     PacketType.UNIVERSE_TIME_UPDATE: (parse_universe_time_update, build_universe_time_update),
     PacketType.PLAYER_WARP_RESULT: (parse_player_warp_result, build_player_warp_result),
     PacketType.FLY_SHIP: (parse_fly_ship, build_fly_ship),
+    PacketType.CHAT_SENT: (parse_chat_send, build_chat_send),
     PacketType.CLIENT_CONNECT: (parse_client_connect, None),
     PacketType.HANDSHAKE_RESPONSE: (parse_handshake_response, None),
     PacketType.PLAYER_WARP: (parse_player_warp, build_player_warp),
@@ -726,14 +727,14 @@ async def build_packet(packet):
 
 
 async def reap_packets(reap_time):
+    # noinspection PyBroadException
     try:
         while True:
             await sleep(reap_time)
-            for hash, packet in _cache.copy().items():
+            for p_hash, packet in _cache.copy().items():
                 if packet.reap_check():
-                    del _cache[hash]
-                    parser_logger.debug(f"Reaped packet with hash {hash}.")
-    except Exception as e:
+                    del _cache[p_hash]
+    except Exception:
         parser_logger.exception("Exception occurred while reaping packets.", exc_info=True)
 
 

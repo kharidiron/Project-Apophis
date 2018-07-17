@@ -4,6 +4,7 @@ import logging
 from asyncio import create_task
 from inspect import getmembers, isclass, ismethod
 from pathlib import Path
+from starrypy.command_dispatcher import CommandDispatcher
 from starrypy.enums import PacketType
 from starrypy.parser import reap_packets
 
@@ -19,7 +20,10 @@ class PluginManager:
         self.inactive_plugins = set()
         self.load_from_path(Path(self.config_manager.config["system_plugin_path"]))
         self.load_from_path(Path(self.config_manager.config["user_plugin_path"]))
+        self.command_dispatcher = CommandDispatcher(factory)
         self.event_hooks = {packet: [] for packet in PacketType}
+        # Just gonna slot this in here for now. I'm sure it can be done better but this'll work for testing.
+        self.event_hooks[PacketType.CHAT_SENT].append(self.command_dispatcher.command_check)
         self.resolve_dependencies()
         self.detect_event_hooks()
         self.reaper_task = None
@@ -89,6 +93,7 @@ class PluginManager:
             self.logger.debug(hooks)
             for i in hooks:
                 self.event_hooks[i[1].event].append(i[1])
+            self.command_dispatcher.register_plugin(plg)
         for hooks in self.event_hooks.values():
             hooks.sort(key=lambda x: x.priority, reverse=True)
         self.logger.debug(f"Event hooks: {self.event_hooks}")
@@ -97,6 +102,7 @@ class PluginManager:
         event = PacketType(packet.type)
         send_ahead = True
         if self.event_hooks[event]:
+            # noinspection PyBroadException
             try:
                 packet = await packet.parse()
                 if not self.reaper_task:
@@ -106,6 +112,7 @@ class PluginManager:
             except Exception:
                 self.logger.exception(f"Packet of type {event.name} could not be parsed!", exc_info=True)
             for func in self.event_hooks[event]:
+                # noinspection PyBroadException
                 try:
                     if not (await func(packet, client)):
                         send_ahead = False

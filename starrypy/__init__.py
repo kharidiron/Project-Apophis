@@ -58,6 +58,7 @@ def main():
     config_mgr = ConfigManager(args)
     client_factory = ClientSideConnectionFactory(config_mgr)
 
+    # noinspection PyBroadException
     try:
         srv = asyncio.start_server(client_factory, port=config_mgr.config['listen_port'])
         loop = asyncio.get_event_loop()
