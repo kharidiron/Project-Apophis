@@ -1,8 +1,8 @@
 import asyncio
 import logging
-from .enums import PacketDirection
+from .enums import PacketDirection, PacketType, ChatReceiveMode
 from .plugin_manager import PluginManager
-from .packet import read_packet
+from .packet import read_packet, Packet
 from traceback import format_exception
 
 
@@ -77,6 +77,28 @@ class Client:
         except (asyncio.IncompleteReadError, asyncio.CancelledError) as e:
             exception_text = "\n".join(format_exception(*e))
             self.logger.debug(f"Client connection was cancelled. Details:\n{exception_text}")
+
+    async def send_message(self, message, *messages, mode=ChatReceiveMode.BROADCAST,
+                           client_id=0, name="", channel=""):
+        packet_data = {
+            "message": message,
+            "name": name,
+            "junk": 0,
+            "header": {
+                "mode": mode,
+                "channel": channel,
+                "client_id": client_id
+            }
+        }
+        try:
+            msg_packet = await Packet.from_parsed(PacketType.CHAT_RECEIVED, packet_data,
+                                                  direction=PacketDirection.TO_CLIENT)
+            await self.write_to_client(msg_packet)
+        except Exception:
+            self.logger.exception("Exception occurred while sending message packet.", exc_info=True)
+        if messages:
+            for message in messages:
+                await self.send_message(message, mode=mode, client_id=client_id, name=name, channel=channel)
 
     async def write_to_server_raw(self, data):
         self._client_writer.write(data)

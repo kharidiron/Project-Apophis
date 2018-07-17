@@ -111,3 +111,61 @@ class WarpAliasType(IntEnum):
     RETURN = 0
     ORBITED = 1
     SHIP = 2
+
+
+class ChatSendMode(IntEnum):
+    UNIVERSE = 0
+    LOCAL = 1
+    PARTY = 2
+
+
+class ChatReceiveMode(IntEnum):
+    LOCAL = 0
+    PARTY = 1
+    BROADCAST = 2
+    WHISPER = 3
+    COMMAND_RESULT = 4
+    RADIO_MESSAGE = 5
+    WORLD = 6
+
+
+class DamageType(IntEnum):
+    NO_DAMAGE = 0 # Assumed
+    DAMAGE = 1
+    IGNORES_DEF = 2
+    KNOCKBACK = 3
+    ENVIRONMENT = 4
+
+
+class DamageHitType(IntEnum):
+    NORMAL = 0
+    STRONG = 1
+    WEAK = 2
+    SHIELD = 3
+    KILL = 4
+
+
+class EntityInteractionType(IntEnum):
+    NOMINAL = 0
+    OPEN_CONTAINER_UI = 1
+    GO_PRONE = 2
+    OPEN_CRAFTING_UI = 3
+    OPEN_NPC_UI = 6
+    OPEN_SAIL_UI = 7
+    OPEN_TELEPORTER_UI = 8
+    OPEN_SCRIPTED_UI = 10
+    OPEN_SPECIAL_UI = 11
+    OPEN_CREW_UI = 12
+
+
+class EntitySpawnType(IntEnum):
+    PLANT = 0
+    OBJECT = 1
+    VEHICLE = 2
+    ITEM_DROP = 3
+    PLANT_DROP = 4
+    PROJECTILE = 5
+    STAGEHAND = 6
+    MONSTER = 7
+    NPC = 8
+    PLAYER = 9

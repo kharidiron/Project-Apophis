@@ -1,9 +1,12 @@
 import io
+import logging
 import struct
 import zlib
 from binascii import hexlify, unhexlify
+from typing import Callable
 from .enums import PacketType, WarpType, WarpWorldType, SystemLocationType
-from .packet import Packet
+
+parser_logger = logging.getLogger("starrypy.parser")
 
 # Some structs, pre-built for performance
 
@@ -205,34 +208,35 @@ def build_json_object(obj: dict):
 
 # Higher-level data object parsing functions
 
-def parse_maybe(stream, data_type: function):
+
+def parse_maybe(stream, data_type):
     if parse_with_struct(stream, "bool"):
         return data_type(stream)
     return None
 
 
-def build_maybe(obj, data_type: function):
+def build_maybe(obj, data_type: Callable):
     if obj is not None:
         return build_with_struct(True, "bool") + data_type(obj)
     return build_with_struct(False, "bool")
 
 
-def parse_set(stream: io.BytesIO, data_type: function):
+def parse_set(stream: io.BytesIO, data_type: Callable):
     set_len = parse_vlq(stream)
     return [data_type(stream) for _ in range(set_len)]
 
 
-def build_set(obj: list, data_type: function):
+def build_set(obj: list, data_type: Callable):
     res = build_vlq(len(obj))
     return res + b"".join(data_type(x) for x in obj)
 
 
-def parse_hashmap(stream: io.BytesIO, key_type: function, value_type: function):
+def parse_hashmap(stream: io.BytesIO, key_type: Callable, value_type: Callable):
     map_len = parse_vlq(stream)
     return dict((key_type(stream), value_type(stream)) for _ in range(map_len))
 
 
-def build_hashmap(obj: dict, key_type: function, value_type: function):
+def build_hashmap(obj: dict, key_type: Callable, value_type: Callable):
     res = build_vlq(len(obj))
     key_list = (key_type(x) for x in obj.keys())
     val_list = (value_type(x) for x in obj.values())
@@ -547,6 +551,7 @@ def parse_handshake_response(stream: io.BytesIO, _):
 
 # - Player warp-
 
+
 def parse_player_warp(stream: io.BytesIO, _):
     return {
         "warp_action": parse_warp_action(stream),
@@ -661,7 +666,7 @@ except ImportError:
     pass
 
 
-async def parse_packet(packet: Packet):
+async def parse_packet(packet):
     """
     Takes an input packet, parses it, and returns the packet with the parsed data attached.
     :param packet: A Packet object.
@@ -678,7 +683,7 @@ async def parse_packet(packet: Packet):
     return packet
 
 
-async def build_packet(packet: Packet):
+async def build_packet(packet):
     """
     Takes an input packet and builds a new raw data string out of the parsed data attached.
     :param packet: A Packet object that's been parsed.

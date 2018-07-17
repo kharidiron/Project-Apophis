@@ -22,6 +22,19 @@ class Packet:
         self.parse = lambda: parse_packet(self)
         self.build = lambda: build_packet(self)
 
+    @classmethod
+    async def from_parsed(cls, packet_type: int, parsed_data: dict, direction: int=0):
+        """
+        Takes in parsed packet data (for example, as built by a plugin) and returns a fully-built packet,
+        ready for sending.
+        :param packet_type: A PacketType value indicating the type of packet to build.
+        :param parsed_data: A dictionary containing parsed data appropriate to the packet.
+        :param direction: A PacketDirection indicating which way the packet should be going. Optional on
+        non-bidirectional packets.
+        :return: A fully-built Packet object.
+        """
+        return await cls(packet_type, b"", direction, parsed_data=parsed_data).build()
+
     def copy(self):
         return Packet(self.type, self.data, self.direction, size=self.size, compressed=self.compressed,
                       original_data=self.original_data, parsed_data=self.parsed_data)
