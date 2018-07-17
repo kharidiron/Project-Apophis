@@ -47,6 +47,9 @@ class Packet:
     def __repr__(self):
         return f"<Packet type={PacketType(self.type)} direction={PacketDirection(self.direction)}>"
 
+    def __hash__(self):
+        return hash(self.original_data)
+
 
 async def read_packet(stream, direction):
     """

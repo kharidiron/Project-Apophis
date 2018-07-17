@@ -1,9 +1,11 @@
 import importlib
 import importlib.util
 import logging
+from asyncio import create_task
 from inspect import getmembers, isclass, ismethod
 from pathlib import Path
 from starrypy.enums import PacketType
+from starrypy.parser import reap_packets
 
 
 class PluginManager:
@@ -20,6 +22,7 @@ class PluginManager:
         self.event_hooks = {packet: [] for packet in PacketType}
         self.resolve_dependencies()
         self.detect_event_hooks()
+        self.reaper_task = None
 
     def load_from_path(self, path):
         ignores = ("__init__", "__pycache__")
@@ -96,6 +99,8 @@ class PluginManager:
         if self.event_hooks[event]:
             try:
                 packet = await packet.parse()
+                if not self.reaper_task:
+                    self.reaper_task = create_task(reap_packets(60))
             except NotImplementedError:
                 self.logger.debug(f"Packet of type {event.name} is not implemented.")
             except Exception:

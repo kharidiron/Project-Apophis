@@ -2,13 +2,16 @@ import io
 import logging
 import struct
 import zlib
+from asyncio import sleep
 from binascii import hexlify, unhexlify
 from typing import BinaryIO, Callable, List, Dict, Any, Union, Hashable, Optional
 from .enums import PacketType, WarpType, WarpWorldType, SystemLocationType
 
+
+_cache = {}
 parser_logger = logging.getLogger("starrypy.parser")
 
-JsonType = typing.Union[None, bool, int, float, str, List["JsonType"], Dict[str, "JsonType"]]
+JsonType = Union[None, bool, int, float, str, List["JsonType"], Dict[str, "JsonType"]]
 
 # Some structs, pre-built for performance
 
@@ -683,8 +686,15 @@ async def parse_packet(packet):
     if parse_funcs is None:
         packet.parsed_data = {}
     else:
+        packet_hash = hash(packet)
+        if packet_hash in _cache:
+            packet.parsed_data = _cache[packet_hash].get()
+            parser_logger.debug(f"Accessed cached packet with hash {packet_hash}.")
+            return packet
         try:
             packet.parsed_data = parse_funcs[0](io.BytesIO(packet.data), packet.direction)
+            _cache[packet_hash] = CachedPacket(packet.parsed_data)
+            parser_logger.debug(f"Cached packet with hash {packet_hash}.")
         except IndexError:
             packet.parsed_data = {}
     return packet
@@ -713,3 +723,30 @@ async def build_packet(packet):
         except IndexError:
             raise NotImplementedError
         return packet
+
+
+async def reap_packets(reap_time):
+    try:
+        while True:
+            await sleep(reap_time)
+            for hash, packet in _cache.copy().items():
+                if packet.reap_check():
+                    del _cache[hash]
+                    parser_logger.debug(f"Reaped packet with hash {hash}.")
+    except Exception as e:
+        parser_logger.exception("Exception occurred while reaping packets.", exc_info=True)
+
+
+class CachedPacket:
+
+    def __init__(self, parsed_data):
+        self._count = 1
+        self._parsed_data = parsed_data
+
+    def get(self):
+        self._count += 1
+        return self._parsed_data.copy()
+
+    def reap_check(self):
+        self._count -= 1
+        return self._count <= 0
