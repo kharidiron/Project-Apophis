@@ -1,10 +1,9 @@
 import io
 import logging
 import struct
-import typing
 import zlib
 from binascii import hexlify, unhexlify
-from typing import BinaryIO, Callable, List, Dict, Any
+from typing import BinaryIO, Callable, List, Dict, Any, Union, Hashable, Optional
 from .enums import PacketType, WarpType, WarpWorldType, SystemLocationType
 
 parser_logger = logging.getLogger("starrypy.parser")
@@ -32,7 +31,7 @@ struct_cache = {
 # Basic data type parsing
 
 
-def parse_byte(stream: typing.BinaryIO) -> int:
+def parse_byte(stream: BinaryIO) -> int:
     return ord(stream.read(1))
 
 
@@ -40,7 +39,7 @@ def build_byte(obj: int) -> bytes:
     return obj.to_bytes(1, byteorder="big", signed=False)
 
 
-def parse_with_struct(stream: typing.BinaryIO, data_type: str) -> typing.Union[bool, int, float, tuple]:
+def parse_with_struct(stream: BinaryIO, data_type: str) -> Union[bool, int, float, tuple]:
     """
     This function takes an input stream and transforms it into a variety of data types, depending on data_type.
     :param stream: A stream object of raw bytes.
@@ -54,7 +53,7 @@ def parse_with_struct(stream: typing.BinaryIO, data_type: str) -> typing.Union[b
     return unpacked
 
 
-def build_with_struct(obj: typing.Union[bool, int, float, tuple], data_type: str) -> bytes:
+def build_with_struct(obj: Union[bool, int, float, tuple], data_type: str) -> bytes:
     """
     This function takes a variety of simple input data types and turns them into bytes depending on data_type.
     :param obj: The object to be parsed. Should be one of [bool, int, float] or a tuple of int or float.
@@ -213,13 +212,13 @@ def build_json_object(obj: Dict[str, JsonType]) -> bytes:
 
 
 def parse_maybe(stream: BinaryIO,
-                data_type: Callable[[BinaryIO], Any]) -> typing.Optional:
+                data_type: Callable[[BinaryIO], Any]) -> Optional:
     if parse_with_struct(stream, "bool"):
         return data_type(stream)
     return None
 
 
-def build_maybe(obj: typing.Optional, data_type: Callable[[Any], bytes]) -> bytes:
+def build_maybe(obj: Optional, data_type: Callable[[Any], bytes]) -> bytes:
     if obj is not None:
         return build_with_struct(True, "bool") + data_type(obj)
     return build_with_struct(False, "bool")
@@ -235,13 +234,13 @@ def build_set(obj: List, data_type: Callable[[Any], bytes]) -> bytes:
     return res + b"".join(data_type(x) for x in obj)
 
 
-def parse_hashmap(stream: BinaryIO, key_type: Callable[[BinaryIO], typing.Hashable],
+def parse_hashmap(stream: BinaryIO, key_type: Callable[[BinaryIO], Hashable],
                   value_type: Callable[[BinaryIO], Any]) -> Dict:
     map_len = parse_vlq(stream)
     return dict((key_type(stream), value_type(stream)) for _ in range(map_len))
 
 
-def build_hashmap(obj: Dict, key_type: Callable[[typing.Hashable], bytes],
+def build_hashmap(obj: Dict, key_type: Callable[[Hashable], bytes],
                   value_type: Callable[[Any], bytes]) -> bytes:
     res = build_vlq(len(obj))
     key_list = (key_type(x) for x in obj.keys())
