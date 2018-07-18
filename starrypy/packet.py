@@ -1,5 +1,6 @@
 import asyncio
 import zlib
+
 from .enums import PacketType, PacketDirection
 from .parser import parse_packet, build_packet
 from .spy_utils import read_vlq_signed

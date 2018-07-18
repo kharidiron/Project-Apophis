@@ -4,9 +4,10 @@ import logging
 from asyncio import create_task
 from inspect import getmembers, isclass, ismethod
 from pathlib import Path
-from starrypy.command_dispatcher import CommandDispatcher
-from starrypy.enums import PacketType
-from starrypy.parser import reap_packets
+
+from .command_dispatcher import CommandDispatcher
+from .enums import PacketType
+from .parser import reap_packets
 
 
 class PluginManager:
