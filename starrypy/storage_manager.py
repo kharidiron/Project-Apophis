@@ -40,4 +40,3 @@ class StorageManager:
 
         DeclarativeBase.metadata.create_all(self.engine, checkfirst=True)
         Session.configure(bind=self.engine)
-

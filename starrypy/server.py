@@ -59,6 +59,7 @@ class Client:
         try:
             while True:
                 packet = await read_packet(self._reader, PacketDirection.TO_SERVER)
+                # self.logger.debug(f"  -> S: {packet.type}")
                 if await self.plugin_manager.hook_event(packet, self):
                     await self.write_to_server(packet)
         except asyncio.IncompleteReadError as e:
@@ -82,6 +83,7 @@ class Client:
         try:
             while True:
                 packet = await read_packet(self._client_reader, PacketDirection.TO_CLIENT)
+                # self.logger.debug(f"C <-  : {packet.type}")
                 if await self.plugin_manager.hook_event(packet, self):
                     await self.write_to_client(packet)
         except (asyncio.IncompleteReadError, asyncio.CancelledError) as e:

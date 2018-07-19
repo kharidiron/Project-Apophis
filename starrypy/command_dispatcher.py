@@ -1,5 +1,6 @@
 import inspect
 import logging
+
 from .decorators import EventHook
 from .enums import PacketType
 from .errors import CommandSyntaxError, UserPermissionError
