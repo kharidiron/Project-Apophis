@@ -27,7 +27,7 @@ class PluginManager:
         # Just gonna slot this in here for now. I'm sure it can be done better but this'll work for testing.
         self.event_hooks[PacketType.CHAT_SENT].append(self.command_dispatcher.command_check)
         self.resolve_dependencies()
-        additional = {'player_manager': self.factory.player_manager}
+        additional = (self.factory.player_manager, )
         self.detect_event_hooks(additional)
         self.reaper_task = None
 
@@ -90,14 +90,14 @@ class PluginManager:
                                   f"It will not be activated.")
                 del self.plugins[plg.name]
 
-    def detect_event_hooks(self, additional=dict()):
+    def detect_event_hooks(self, core=tuple()):
         for plg in self.plugins.values():
             hooks = getmembers(plg, lambda x: ismethod(x) and hasattr(x, "event"))
             for i in hooks:
                 self.event_hooks[i[1].event].append(i[1])
             self.command_dispatcher.register_plugin(plg)
 
-        for mod in additional.values():
+        for mod in core:
             hooks = getmembers(mod, lambda x: ismethod(x) and hasattr(x, "event"))
             for i in hooks:
                 self.event_hooks[i[1].event].append(i[1])
