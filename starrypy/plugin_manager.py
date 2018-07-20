@@ -4,6 +4,7 @@ import logging
 from asyncio import create_task
 from inspect import getmembers, isclass, ismethod
 from pathlib import Path
+from pprint import pformat, pprint
 
 from .command_dispatcher import CommandDispatcher
 from .enums import PacketType
@@ -26,7 +27,8 @@ class PluginManager:
         # Just gonna slot this in here for now. I'm sure it can be done better but this'll work for testing.
         self.event_hooks[PacketType.CHAT_SENT].append(self.command_dispatcher.command_check)
         self.resolve_dependencies()
-        self.detect_event_hooks()
+        additional = {'player_manager': self.factory.player_manager}
+        self.detect_event_hooks(additional)
         self.reaper_task = None
 
     def load_from_path(self, path):
@@ -88,16 +90,21 @@ class PluginManager:
                                   f"It will not be activated.")
                 del self.plugins[plg.name]
 
-    def detect_event_hooks(self):
+    def detect_event_hooks(self, additional=dict()):
         for plg in self.plugins.values():
             hooks = getmembers(plg, lambda x: ismethod(x) and hasattr(x, "event"))
-            self.logger.debug(hooks)
             for i in hooks:
                 self.event_hooks[i[1].event].append(i[1])
             self.command_dispatcher.register_plugin(plg)
+
+        for mod in additional.values():
+            hooks = getmembers(mod, lambda x: ismethod(x) and hasattr(x, "event"))
+            for i in hooks:
+                self.event_hooks[i[1].event].append(i[1])
+
         for hooks in self.event_hooks.values():
             hooks.sort(key=lambda x: x.priority, reverse=True)
-        self.logger.debug(f"Event hooks: {self.event_hooks}")
+        self.logger.debug(f"Event hooks: {pformat(self.event_hooks)}")
 
     async def hook_event(self, packet, client):
         event = PacketType(packet.type)

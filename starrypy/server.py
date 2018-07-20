@@ -18,8 +18,8 @@ class ClientSideConnectionFactory:
         self.logger.debug("Initialized client-side connection factory.")
         self.config_manager = config_manager
         self.storage_manager = StorageManager(self)
-        self.plugin_manager = PluginManager(self)
         self.player_manager = PlayerManager(self)
+        self.plugin_manager = PluginManager(self)
 
     def __call__(self, reader, writer):
         self.logger.debug("Establishing new connection.")
@@ -33,8 +33,8 @@ class Client:
         self.factory = factory
         self.config_manager = factory.config_manager
         self.storage_manager = factory.storage_manager
-        self.plugin_manager = factory.plugin_manager
         self.player_manager = factory.player_manager
+        self.plugin_manager = factory.plugin_manager
         self._alive = True
         self._reader = reader
         self._writer = writer
