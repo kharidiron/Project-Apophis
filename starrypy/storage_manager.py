@@ -1,5 +1,6 @@
-import logging
 from contextlib import contextmanager
+import logging
+import pprint
 
 import sqlalchemy as sqla
 from sqlalchemy.ext.declarative import declarative_base
@@ -11,12 +12,14 @@ Session = sessionmaker()
 
 
 @contextmanager
-def db_session(_sessionmaker):
-    session = _sessionmaker()
+def db_session():
+    logger = logging.getLogger("starrypy.storage_manager.db_session")
+    session = Session()
 
     try:
         yield session
-    except:
+    except Exception as e:
+        logger.debug(f"Database access exception: {pprint.pformat(e)}")
         session.rollback()
     finally:
         session.close()

@@ -3,7 +3,7 @@ from enum import IntEnum, unique
 
 @unique  # Just to avoid potential developer errors
 class PacketType(IntEnum):
-    # Handshake packets
+    # Protocol initialization packets
     PROTOCOL_REQUEST = 0
     PROTOCOL_RESPONSE = 1
     # Universe; server → client
@@ -85,6 +85,19 @@ class PacketDirection(IntEnum):
     TO_SERVER = 1
     FROM_CLIENT = 1
     FROM_SERVER = 0
+
+
+class ConnectionState(IntEnum):
+    DISCONNECTED = 0
+    CLIENT_VERSION_SENT = 1
+    VERSION_OK_WITH_SERVER = 2
+    CLIENT_CONNECT = 3
+    HANDSHAKE_CHALLENGE = 4
+    HANDSHAKE_CHALLENGE_RESPONSE = 5
+    CONNECT_RESPONSE_SENT = 6
+    CONNECTED = 7
+    CONNECTED_WITH_HEARTBEAT = 8
+    CLIENT_DISCONNECTING = 9
 
 
 class SystemLocationType(IntEnum):

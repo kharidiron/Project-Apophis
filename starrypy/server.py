@@ -41,6 +41,7 @@ class Client:
         self._client_reader = None
         self._client_writer = None
         self.client_loop = None
+        self.connection_state = None
         # noinspection PyProtectedMember
         self.ip_address = reader._transport.get_extra_info("peername")[0]
         self.logger.info(f"Connection established from IP {self.ip_address}.")
