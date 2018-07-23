@@ -85,7 +85,7 @@ class PlayerManager:
         # self.logger.debug("C -> S: Client Connect")
         client.connection_state = ConnectionState.CLIENT_CONNECT
 
-        player = self._add_or_get_player(**packet.parsed_data, ip=client.ip_address)
+        player = await self._add_or_get_player(**packet.parsed_data, ip=client.ip_address)
 
         return True
 
@@ -172,7 +172,7 @@ class PlayerManager:
         client.connection_state = ConnectionState.DISCONNECTED
         return True
 
-    def _add_or_get_player(self, player_uuid=None, player_name=None, player_species=None, ip=None, **kwargs):
+    async def _add_or_get_player(self, player_uuid=None, player_name=None, player_species=None, ip=None, **kwargs):
         # Convert to more friendly formats
         if isinstance(player_uuid, bytes):
             player_uuid = player_uuid.decode("ascii")
@@ -228,7 +228,7 @@ class PlayerManager:
         """
 
         # strips any strings like ^colour; and any non-ascii characters (probably)
-        char_strip = re.compile(r"\^[^\s]*?;|[^ -~]")
+        char_strip = re.compile(r"\^[^\s]*?;|[^ -~]+")
 
         # strips any leading or trailing whitespace, and all excess whitespace over one character long
         whitespace_strip = re.compile(r"(?<=\s)\s+|^\s+|\s+$")
