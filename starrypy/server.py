@@ -70,6 +70,9 @@ class Client:
             self.logger.warning("Connection ended abruptly.")
             exception_text = "\n".join(format_exception(*e))
             self.logger.debug(f"Connection cancellation details:\n{exception_text}")
+        except ConnectionResetError as e:
+            self.logger.warning("Connection ended abruptly on the client side.")
+            await self.player_manager.close_out(self)
         except Exception:
             self.logger.exception("Exception occurred in server listener.", exc_info=True)
         finally:

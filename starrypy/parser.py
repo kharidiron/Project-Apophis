@@ -639,7 +639,8 @@ def build_give_item(obj: Dict, _) -> bytes:
 
 
 def parse_step_update(stream: BinaryIO, _) -> Dict:
-    return {"remote_step": parse_with_struct(stream, "uint64")}
+    # The documents lie! This is a VLQ, not a Unsigned int 64.
+    return {"remote_step": parse_vlq(stream)}
 
 # Parsing function dispatch thing
 

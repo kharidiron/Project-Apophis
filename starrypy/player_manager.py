@@ -6,9 +6,41 @@ import re
 import sqlalchemy as sqla
 from sqlalchemy.orm import relationship
 
+from starrypy.parser import build_packet
 from .decorators import EventHook
-from .enums import PacketType, ConnectionState
-from .storage_manager import DeclarativeBase, db_session
+from .enums import ConnectionState, PacketType, BanType
+from .storage_manager import cache_query, DeclarativeBase, db_session
+
+
+class Ban(DeclarativeBase):
+    __tablename__ = "bans"
+
+    id = sqla.Column(sqla.Integer, primary_key=True, autoincrement=True)
+    ip = sqla.Column(sqla.String(39))
+    uuid = sqla.Column(sqla.String(32))
+    reason = sqla.Column(sqla.String(255))
+    banned_by = sqla.Column(sqla.String(24))
+    banned_at = sqla.Column(sqla.DateTime)
+    ban_type = sqla.Column(sqla.Enum(BanType))
+    duration = sqla.Column(sqla.String(10))
+
+    def __repr__(self):
+        return f"<Ban(uuid={self.uuid}, ip={self.ip}, reason={self.reason}, by={self.banned_by}," \
+               f" type={self.ban_type}, when={self.banned_at}, duration={self.duration}>"
+
+
+class IP(DeclarativeBase):
+    __tablename__ = "ips"
+
+    id = sqla.Column(sqla.Integer, primary_key=True, autoincrement=True)
+    ip = sqla.Column(sqla.String(39))
+    uuid = sqla.Column(sqla.String(32), sqla.ForeignKey("players.uuid"))
+    last_seen = sqla.Column(sqla.DateTime)
+
+    player = relationship("Player", back_populates="ips")
+
+    def __repr__(self):
+        return "<IP(ip={}, uuid={})>".format(self.ip, self.uuid)
 
 
 class Player(DeclarativeBase):
@@ -25,7 +57,7 @@ class Player(DeclarativeBase):
 
     logged_in = sqla.Column(sqla.Boolean)
     client_id = sqla.Column(sqla.Integer)
-    current_ip = sqla.Column(sqla.String(15))
+    current_ip = sqla.Column(sqla.String(39))
 
     def __repr__(self):
         return f"<Player(name={self.name}, uuid={self.uuid}, logged_in={self.logged_in})>"
@@ -34,12 +66,16 @@ class Player(DeclarativeBase):
         return pprint.pformat(self.__dict__)
 
 
+Player.ips = relationship("IP", order_by=IP.id, back_populates="player")
+
+
 class PlayerManager:
     def __init__(self, factory):
         self.logger = logging.getLogger("starrypy.player_manager")
         self.logger.debug("Initializing Player manager framework.")
         self.factory = factory
         self.config_manager = factory.config_manager
+        self._clean_slate()
 
     # Connect Sequence
     @EventHook(PacketType.PROTOCOL_REQUEST)
@@ -70,7 +106,7 @@ class PlayerManager:
     @EventHook(PacketType.CLIENT_CONNECT)
     async def connection_step_3(self, packet, client):
         """
-        The client, upon getting an OK from the server, announces its
+        The client, upon getting an Version OK from the server, announces its
         intention to connect, by sending over a bunch of data. This is our
         first big data-scrape.
 
@@ -78,7 +114,7 @@ class PlayerManager:
         fuel, ship level, ship crew size, fuel efficiency, ship speed, and
         ship capabilities.
 
-        The less useful values are the ship chunks, and asset digest, and the
+        Othere things we can get: ship chunks, and asset digest, and the
         allow asset mismatch option.
         """
 
@@ -86,6 +122,12 @@ class PlayerManager:
         client.connection_state = ConnectionState.CLIENT_CONNECT
 
         player = await self._add_or_get_player(**packet.parsed_data, ip=client.ip_address)
+        client.player = player
+
+        # TODO: Check for bans
+        self._check_bans(client)
+
+        # TODO: Check for valid species
 
         return True
 
@@ -127,6 +169,15 @@ class PlayerManager:
 
         # self.logger.debug("C <- S: Connect Success")
         client.connection_state = ConnectionState.CONNECTED
+        try:
+            with db_session() as db:
+                client.player.logged_in = True
+                client.player.last_seen = datetime.now()
+                client.player.client_id = packet.parsed_data['client_id']
+                db.commit()
+            self.logger.info(f"{client.player.alias} [client id: {client.player.client_id}] has logged in.")
+        except Exception as e:
+            self.logger.debug(f"Failed to update player info: {e}")
         return True
 
     @EventHook(PacketType.CONNECT_FAILURE)
@@ -144,6 +195,21 @@ class PlayerManager:
         # self.logger.debug("C <- S: Connect Failure")
         client.connection_state = ConnectionState.DISCONNECTED
         return True
+
+    # @EventHook(PacketType.STEP_UPDATE)
+    # async def connection_step_5(self, packet, client):
+    #     """
+    #     Heartbeat detected¸ we are fully connected
+    #     """
+    #
+    #     # TODO: Test performance impact of having this.
+    #     # Note- this packet is ever changing, so caching it is a
+    #     # BAD idea.
+    #
+    #     # self.logger.debug("C <- S: Connect Failure")
+    #     if client.connection_state != ConnectionState.CONNECTED_WITH_HEARTBEAT:
+    #         client.connection_state = ConnectionState.CONNECTED_WITH_HEARTBEAT
+    #     return True
 
     # Disconnecting
     @EventHook(PacketType.CLIENT_DISCONNECT_REQUEST)
@@ -170,9 +236,23 @@ class PlayerManager:
 
         # self.logger.debug("C <- S: Server Disconnect")
         client.connection_state = ConnectionState.DISCONNECTED
+        self.logger.info(f"{client.player.alias} [client id: {client.player.client_id}] has disconnected.")
+        await self.close_out(client)
+        return True
+
+    # Connected and working
+    @EventHook(PacketType.WORLD_START, priority=1)
+    async def player_arrives(self, packet, client):
+        # TODO: Store the players location
         return True
 
     async def _add_or_get_player(self, player_uuid=None, player_name=None, player_species=None, ip=None, **kwargs):
+        """
+        Check if a player is in the database; if they aren't, add them. If
+        they are, get their record. In either case, cache their record for
+        future use.
+        """
+
         # Convert to more friendly formats
         if isinstance(player_uuid, bytes):
             player_uuid = player_uuid.decode("ascii")
@@ -184,6 +264,16 @@ class PlayerManager:
         if alias is None:
             self.logger.warning("No valid characters used in player name - falling back to UUID.")
             alias = player_uuid[0:4]
+
+        # Track the IP address that was used to connect
+        with db_session() as db:
+            ip_address = db.query(IP).filter_by(ip=ip, uuid=player_uuid).first()
+            if not ip_address:
+                ip_address = IP(ip=ip, uuid=player_uuid, last_seen=datetime.now())
+                db.add(ip_address)
+            else:
+                ip_address.last_seen = datetime.now()
+            db.commit()
 
         # Grab the player entry from the database. If it doesn't exist, create it.
         player = None
@@ -215,16 +305,13 @@ class PlayerManager:
             db.commit()
 
         # Return the player object
-        return player
+        return cache_query(player)
 
     @staticmethod
     def _clean_name(name):
         """
         Remove all the unwanted stuff from a users name, to turn it into
         something more easy to type in the chat box.
-
-        :param name:
-        :return:
         """
 
         # strips any strings like ^colour; and any non-ascii characters (probably)
@@ -237,3 +324,60 @@ class PlayerManager:
 
         # No names over 24 characters please and thank you
         return alias[:24] if alias else None
+
+    async def close_out(self, client):
+        """
+        Make sure the player entry in the database gets properly updated on
+        disconnect.
+        """
+
+        try:
+            with db_session() as db:
+                client.player.logged_in = False
+                client.player.last_seen = datetime.now()
+                client.player.client_id = -1
+                db.commit()
+        except Exception as e:
+            self.logger.debug(f"Failed to update player info: {e}")
+
+    def _clean_slate(self):
+        """
+        Sever has freshly started. Make sure that all users in the database
+        are marked as logged out.
+        """
+
+        try:
+            with db_session() as db:
+                players = db.query(Player).filter_by(logged_in=True).all()
+                for player in players:
+                    self.logger.warning(f"Correcting logged_in state on {player.alias}.")
+                    player.logged_in = False
+                    player.client_id = -1
+                db.commit()
+        except Exception as e:
+            self.logger.debug(f"Failed to update database: {e}")
+
+    def _check_species(self, species):
+        pass
+
+    def _check_bans(self, client):
+        with db_session() as db:
+            ip_ban = db.query(Ban).filter_by(ip=client.ip_address, ban_type=BanType.IP).first()
+            uuid_ban = db.query(Ban).filter_by(uuid=client.player.uuid, ban_type=BanType.UUID).first()
+
+            reason = None
+            if ip_ban:
+                self.logger.info(f"IP Banned user attempted to login.")
+                reason = ip_ban.reason
+            if uuid_ban:
+                self.logger.info(f"UUID Banned user attempted to login.")
+                reason = uuid_ban.reason
+
+            message = f"^red;You are banned!^clear;\nReason: {reason}"
+
+            # TODO: Implement rejection
+
+            # def build_rejection(reason):
+            #     return build_packet()
+            #
+            # await client.write_to_client_raw(build_rejection)

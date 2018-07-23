@@ -11,6 +11,53 @@ DeclarativeBase = declarative_base()
 Session = sessionmaker()
 
 
+# Database management stuff
+
+def cache_query(result, collection=False):
+    record = result
+
+    if not isinstance(result, DeclarativeBase):
+        return record
+
+    if collection:
+        record = []
+        for r in result:
+            record.append(SessionCacher(r))
+    else:
+        record = SessionCacher(result)
+
+    return record
+
+
+class SessionCacher(object):
+    def __init__(self, record):
+        self.__dict__["record"] = record
+
+    def __getattr__(self, name):
+        with db_session() as session:
+            if sessionmaker.object_session(self.record) != session:
+                session.add(self.record)
+            session.refresh(self.record)
+            val = getattr(self.record, name)
+        return val
+
+    def __setattr__(self, name, value):
+        with db_session() as session:
+            if sessionmaker.object_session(self.record) != session:
+                session.add(self.record)
+            session.refresh(self.record)
+            setattr(self.record, name, value)
+            session.merge(self.record)
+            session.commit()
+
+    def __str__(self):
+        with db_session() as session:
+            if sessionmaker.object_session(self.record) != session:
+                session.add(self.record)
+            session.refresh(self.record)
+            return str(self.record)
+
+
 @contextmanager
 def db_session():
     logger = logging.getLogger("starrypy.storage_manager.db_session")
@@ -19,17 +66,13 @@ def db_session():
     try:
         yield session
     except Exception as e:
-        logger.debug(f"Database access exception: {pprint.pformat(e)}")
+        logger.error(f"Database access exception: {pprint.pformat(e)}")
         session.rollback()
     finally:
         session.close()
 
 
-class SessionAccessMixin:
-    def __init__(self, *args, **kwargs):
-        super(self).__init__(*args, **kwargs)
-        self.session = Session
-
+# Storage Manager
 
 class StorageManager:
     def __init__(self, factory):

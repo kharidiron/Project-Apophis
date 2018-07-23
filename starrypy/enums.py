@@ -100,6 +100,11 @@ class ConnectionState(IntEnum):
     CLIENT_DISCONNECTING = 9
 
 
+class BanType(IntEnum):
+    IP = 1
+    UUID = 2
+
+
 class SystemLocationType(IntEnum):
     SYSTEM = 0
     COORDINATE = 1
