@@ -13,14 +13,14 @@ class ConfigManager:
         self.logger = logging.getLogger("starrypy.config_manager")
         self.logger.debug("Initialized config manager.")
         self.config = self.load_config()
-        self.config["config_path"] = self.config_path.parents[0]
-        self.config["system_plugin_path"] = Path(__file__).parents[0] / "plugins"
-        self.config["user_plugin_path"] = self.config_path.parents[0] / "plugins"
+        self.config["config_path"] = self.config_path.parent
+        self.config["system_plugin_path"] = Path.cwd() / "plugins"
+        self.config["user_plugin_path"] = self.config_path.parent / "plugins"
 
     def load_config(self):
         self.logger.debug("Loading configuration.")
 
-        default_config = Path(__file__).parents[0] / "_example" / "config.yaml"
+        default_config = Path.cwd() / "_example" / "config.yaml"
 
         try:
             with self.config_path.open(encoding="utf-8") as fp:

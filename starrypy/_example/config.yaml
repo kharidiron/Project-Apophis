@@ -1,4 +1,6 @@
 !To run you must remove this line
 # This is a comment
 "listen_port": 21025
+"upstream_port": 21024
+"upstream_host": 127.0.0.1
 "database_file": "starrypy.db"

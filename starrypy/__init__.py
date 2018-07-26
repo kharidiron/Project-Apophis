@@ -14,6 +14,9 @@ __version__ = '3.0dev4'
 
 
 def main():
+    # Set the current working directory to avoid funkiness with running as script
+    os.chdir(Path(__file__).parent)
+
     parser = argparse.ArgumentParser(description="Python-based proxy server implementation for Starbound.")
     parser.add_argument("-v", "--verbose", action="count", default=0, help="Enables verbose (debug) output.")
     parser.add_argument("-c", "--config", type=Path, default=(Path.home() / ".starrypy"),
@@ -34,25 +37,27 @@ def main():
     aio_logger = logging.getLogger("asyncio")
     log_formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(name)s # %(message)s",
                                       datefmt='%Y-%m-%d %H:%M:%S')
+
+    stream_handler = logging.StreamHandler()    # This is temporary until urwid gets in
+    stream_handler.setFormatter(log_formatter)  # We want to init this early for early log events
+    main_logger.setLevel(loglevel)
+    aio_logger.setLevel(loglevel)
+    main_logger.addHandler(stream_handler)
+    aio_logger.addHandler(stream_handler)
+
     if not args.config.exists():
-        os.makedirs(args.config)
-        os.makedirs(Path.home() / ".starrypy" / "plugins")
-        with open(Path.home() / ".starrypy" / "plugins" / "__init__.py", 'a'):
-            os.utime(Path.home() / ".starrypy" / "plugins" / "__init__.py", None)
+        main_logger.warning(f"Specified config directory {args.config} does not exist! Creating now...")
+        plugins_folder = args.config / "plugins"
+        plugins_folder.mkdir(parents=True)  # Creates recursively
+        init_file = args.config / "plugins" / "__init__.py"
+        init_file.touch()  # Makes the __init__ file for the plugin folder, if you don't know what touch means
 
     if not args.logfile.exists():
         args.logfile.touch()
     file_handler = RotatingFileHandler(args.logfile, maxBytes=1048576, backupCount=3, encoding="utf-8")
-    file_handler.setFormatter(log_formatter)
-    stream_handler = logging.StreamHandler()  # This is temporary until urwid gets in
-    stream_handler.setFormatter(log_formatter)
-
-    main_logger.setLevel(loglevel)
+    file_handler.setFormatter(log_formatter)  # This part's done later, once we know we have a valid config directory.
     main_logger.addHandler(file_handler)
-    main_logger.addHandler(stream_handler)
-    aio_logger.setLevel(loglevel)
     aio_logger.addHandler(file_handler)
-    aio_logger.addHandler(stream_handler)
 
     main_logger.info("Starting main loop.")
 
