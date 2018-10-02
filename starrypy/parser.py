@@ -6,7 +6,7 @@ from asyncio import sleep
 from binascii import hexlify, unhexlify
 from typing import BinaryIO, Callable, List, Dict, Any, Union, Hashable, Optional
 
-from .enums import PacketType, WarpType, WarpWorldType, SystemLocationType
+from .enums import PacketType, PacketDirection, WarpType, WarpWorldType, SystemLocationType
 
 
 _cache = {}
@@ -249,8 +249,7 @@ def build_hashmap(obj: Dict, key_type: Callable[[Hashable], bytes],
     res = build_vlq(len(obj))
     key_list = (key_type(x) for x in obj.keys())
     val_list = (value_type(x) for x in obj.values())
-    # noinspection PyTypeChecker
-    return res + b"".join(zip(key_list, val_list))
+    return res + b"".join(j for i in zip(key_list,val_list) for j in i)
 
 
 def parse_chat_header(stream: BinaryIO) -> Dict:
@@ -410,6 +409,29 @@ def parse_world_chunks(stream: BinaryIO) -> Dict:
     chunks = [(i, parse_byte_array(stream), parse_byte(stream), parse_byte_array(stream))
               for i in range(array_len)]
     return {"length": array_len, "contents": chunks}
+
+
+def parse_client_context_set(stream: BinaryIO, direction: PacketDirection) -> Dict[str, JsonType]:
+    res = {"_length": parse_vlq(stream)}
+    parser_logger.debug(f"Length: {res['_length']}")
+    if direction == PacketDirection.TO_CLIENT:
+        res["_sub_length"] = parse_vlq(stream)
+        parser_logger.debug(f"Sublength: {res['_sub_length']}")
+        if res["_sub_length"] == 0:  # Dunno what it is? Screw it! The information we really want isn't here anyways.
+            res["_unknown"] = stream.read()
+        else:
+            res["rpcs"] = parse_json_array(stream)
+    else:
+        res["rpcs"] = parse_json_array(stream)
+    return res
+
+
+def build_client_context_set(obj: Dict, direction: PacketDirection) -> bytes:
+    if direction != PacketDirection.TO_SERVER:  # We only support building to-server CCUs; they do what we need.
+        raise NotImplementedError("CCS to client building not implemented yet.")
+    res = build_json_array(obj["rpcs"])
+    res = build_vlq(len(res)) + res
+    return res
 
 # Specific packet parsing functions
 # These receive two arguments from parse_ or build_packet
@@ -663,6 +685,7 @@ parse_map = {
     PacketType.CLIENT_CONNECT: (parse_client_connect, None),
     PacketType.HANDSHAKE_RESPONSE: (parse_handshake_response, None),
     PacketType.PLAYER_WARP: (parse_player_warp, build_player_warp),
+    PacketType.CLIENT_CONTEXT_UPDATE: (parse_client_context_set, build_client_context_set),
     PacketType.WORLD_START: (parse_world_start, None),
     PacketType.STEP_UPDATE: (parse_step_update, None)
 }
@@ -692,12 +715,15 @@ async def parse_packet(packet):
         packet_hash = hash(packet)
         if packet_hash in _cache:
             packet.parsed_data = _cache[packet_hash].get()
-            parser_logger.debug(f"Accessed cached packet with hash {packet_hash}.")
             return packet
         try:
-            packet.parsed_data = parse_funcs[0](io.BytesIO(packet.data), packet.direction)
+            data_stream = io.BytesIO(packet.data)
+            packet.parsed_data = parse_funcs[0](data_stream, packet.direction)
             _cache[packet_hash] = CachedPacket(packet.parsed_data)
-            parser_logger.debug(f"Cached packet with hash {packet_hash}.")
+            leftover_data = data_stream.read()
+            if leftover_data:
+                parser_logger.debug(f"Packet parsing for type {PacketType(packet.type)} has leftover data! Data:\n"
+                                    f"{hexlify(leftover_data)}")
         except IndexError:
             packet.parsed_data = {}
     return packet
@@ -723,7 +749,7 @@ async def build_packet(packet):
                 size_bytes = build_signed_vlq(packet.size)
                 data_bytes = packet.data
             packet.original_data = b"".join((build_byte(packet.type), size_bytes, data_bytes))
-        except IndexError:
+        except TypeError:
             raise NotImplementedError
         return packet
 

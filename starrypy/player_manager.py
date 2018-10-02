@@ -6,9 +6,9 @@ import re
 import sqlalchemy as sqla
 from sqlalchemy.orm import relationship
 
-from starrypy.parser import build_packet
 from .decorators import EventHook
 from .enums import ConnectionState, PacketType, BanType
+from .packet import Packet
 from .storage_manager import cache_query, DeclarativeBase, db_session
 
 
@@ -52,6 +52,8 @@ class Player(DeclarativeBase):
     alias = sqla.Column(sqla.String(24))
     species = sqla.Column(sqla.String(16))
 
+    location = sqla.Column(sqla.String(255))
+
     first_seen = sqla.Column(sqla.DateTime)
     last_seen = sqla.Column(sqla.DateTime)
 
@@ -70,6 +72,8 @@ Player.ips = relationship("IP", order_by=IP.id, back_populates="player")
 
 
 class PlayerManager:
+    name = "player_manager"
+
     def __init__(self, factory):
         self.logger = logging.getLogger("starrypy.player_manager")
         self.logger.debug("Initializing Player manager framework.")
@@ -124,12 +128,13 @@ class PlayerManager:
         player = await self._add_or_get_player(**packet.parsed_data, ip=client.ip_address)
         client.player = player
 
-        # TODO: Check for bans
-        self._check_bans(client)
+        banned = await self._check_bans(client)
 
         # TODO: Check for valid species
 
-        return True
+        species_rejected = await self._check_species(client)
+
+        return not (banned or species_rejected)
 
     @EventHook(PacketType.HANDSHAKE_CHALLENGE)
     async def connection_step_3a(self, packet, client):
@@ -243,7 +248,17 @@ class PlayerManager:
     # Connected and working
     @EventHook(PacketType.WORLD_START, priority=1)
     async def player_arrives(self, packet, client):
-        # TODO: Store the players location
+        planet_template = packet.parsed_data["template_data"]["celestialParameters"]
+        if planet_template is not None:
+            coord = planet_template["coordinate"]
+            planet_str = f"CelestialWorld:{coord['location'][0]}:{coord['location'][1]}:{coord['location'][2]}" \
+                         f":{coord['planet']}"
+            if coord["satellite"] > 0:
+                planet_str += ":{coord['satellite']}"
+            self.logger.debug(planet_str)
+            with db_session() as db:
+                client.player.location = planet_str
+                db.commit()
         return True
 
     async def _add_or_get_player(self, player_uuid=None, player_name=None, player_species=None, ip=None, **kwargs):
@@ -263,7 +278,7 @@ class PlayerManager:
         alias = self._clean_name(player_name)
         if alias is None:
             self.logger.warning("No valid characters used in player name - falling back to UUID.")
-            alias = player_uuid[0:4]
+            alias = player_uuid[:4]
 
         # Track the IP address that was used to connect
         with db_session() as db:
@@ -290,7 +305,11 @@ class PlayerManager:
             else:
                 self.logger.info(f"A new player is connecting: {alias} ({player_uuid})")
 
-                # TODO: Check for alias already in use
+                same_alias = db.query(Player).filter_by(alias=alias).first()
+                while same_alias:
+                    self.logger.warning(f"User with alias {alias} already exists! Trying {alias}_...")
+                    alias += "_"
+                    same_alias = db.query(Player).filter_by(alias=alias).first()
 
                 player = Player(uuid=player_uuid,
                                 original_name=player_name,
@@ -357,10 +376,15 @@ class PlayerManager:
         except Exception as e:
             self.logger.debug(f"Failed to update database: {e}")
 
-    def _check_species(self, species):
-        pass
+    async def _check_species(self, client):
+        species = client.player.species
+        if species not in self.config_manager.config["player_manager"]["allowed_species"]:
+            message = f"^red;Your characters species \"{species}\" is not allowed on this server!"
+            await self.write_rejection(client, message)
+            return True
+        return False
 
-    def _check_bans(self, client):
+    async def _check_bans(self, client):
         with db_session() as db:
             ip_ban = db.query(Ban).filter_by(ip=client.ip_address, ban_type=BanType.IP).first()
             uuid_ban = db.query(Ban).filter_by(uuid=client.player.uuid, ban_type=BanType.UUID).first()
@@ -373,11 +397,20 @@ class PlayerManager:
                 self.logger.info(f"UUID Banned user attempted to login.")
                 reason = uuid_ban.reason
 
-            message = f"^red;You are banned!^clear;\nReason: {reason}"
+            if reason is not None:
+                message = f"^red;You are banned!^reset;\nReason: {reason}"
+                await self.write_rejection(client, message)
+                return True
+            return False
 
-            # TODO: Implement rejection
+    @staticmethod
+    async def write_rejection(client, msg):
+        """
+        A convenience function for writing a connection failure to a connecting client.
 
-            # def build_rejection(reason):
-            #     return build_packet()
-            #
-            # await client.write_to_client_raw(build_rejection)
+        :param client: The Client to write the packet to.
+        :param msg: The message to send with the rejection.
+        :return: None
+        """
+        reject_packet = await Packet.from_parsed(PacketType.CONNECT_FAILURE, {"reason": msg})
+        await client.write_to_client(reject_packet)

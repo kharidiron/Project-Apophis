@@ -2,6 +2,7 @@ import importlib
 import importlib.util
 import logging
 from asyncio import create_task
+from binascii import hexlify
 from inspect import getmembers, isclass, ismethod
 from pathlib import Path
 from pprint import pformat, pprint
@@ -119,6 +120,7 @@ class PluginManager:
                 self.logger.debug(f"Packet of type {event.name} is not implemented.")
             except Exception:
                 self.logger.exception(f"Packet of type {event.name} could not be parsed!", exc_info=True)
+                self.logger.debug(f"Packet that caused the error: {hexlify(packet.original_data)}")
             for func in self.event_hooks[event]:
                 # noinspection PyBroadException
                 try:
