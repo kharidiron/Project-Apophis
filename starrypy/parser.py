@@ -433,6 +433,24 @@ def build_client_context_set(obj: Dict, direction: PacketDirection) -> bytes:
     res = build_vlq(len(res)) + res
     return res
 
+
+def parse_status_effect_list(stream: BinaryIO) -> List[Dict]:
+    l = parse_vlq(stream)
+    res = []
+    for _ in range(l):
+        effect = parse_utf8_string(stream)
+        duration = parse_maybe(stream, lambda x: parse_with_struct(x, "float"))
+        res.append({"effect": effect, "duration": duration})
+    return res
+
+
+def build_status_effect_list(obj: List[Union[str, Dict]]) -> bytes:
+    res = build_vlq(len(obj))
+    for i in obj:
+        res += build_utf8_string(i["effect"])
+        res += build_maybe(i["duration"], lambda x: build_with_struct(x, "float"))
+    return res
+
 # Specific packet parsing functions
 # These receive two arguments from parse_ or build_packet
 # Arg 1 is either the data stream or the parsed_data dict from the packet, depending on if reading or writing
@@ -642,6 +660,16 @@ def parse_world_start(stream: BinaryIO, _) -> Dict:
         "local_interpolation_mode": parse_with_struct(stream, "bool")
     }
 
+# - World Stop
+
+
+def parse_world_stop(stream: BinaryIO, _) -> Dict:
+    return {"reason": parse_utf8_string(stream)}
+
+
+def build_world_stop(obj: Dict, _) -> bytes:
+    return build_utf8_string(obj["reason"])
+
 # - Give item
 
 
@@ -656,7 +684,155 @@ def parse_give_item(stream: BinaryIO, _) -> Dict:
 def build_give_item(obj: Dict, _) -> bytes:
     return build_utf8_string(obj["name"]) + build_vlq(obj["count"]) + build_json(obj["parameters"])
 
+# World client to server
+# - Modify Tile List
+
+# Needs research
+# def parse_modify_tile_list(stream: BinaryIO, _) -> Dict:
+
+# - Spawn Entity
+
+
+def parse_spawn_entity(stream: BinaryIO, _) -> Dict:
+    return {
+        "entity_type": parse_byte(stream),
+        "store_data": parse_byte_array(stream),
+        "first_net_state": parse_byte_array(stream)
+    }
+
+
+def build_spawn_entity(obj: Dict, _) -> bytes:
+    return b"".join([
+        build_byte(obj["entity_type"]),
+        build_byte_array(obj["store_data"]),
+        build_byte_array(obj["first_net_state"])
+    ])
+
 # World bidirectional
+# - Entity Create
+
+
+def parse_entity_create(stream: BinaryIO, _) -> Dict:
+    return {
+        "entity_type": parse_byte(stream),
+        "store_data": parse_byte_array(stream),
+        "first_net_state": parse_byte_array(stream),
+        "entity_id": parse_signed_vlq(stream)
+    }
+
+
+def build_entity_create(obj: Dict, _) -> bytes:
+    return b"".join([
+        build_byte(obj["entity_type"]),
+        build_byte_array(obj["store_data"]),
+        build_byte_array(obj["first_net_state"]),
+        build_signed_vlq(obj["entity_id"])
+    ])
+
+# - Entity Interact
+
+
+def parse_entity_interact(stream: BinaryIO, _) -> Dict:
+    return {
+        "source_id": parse_with_struct(stream, "uint32"),
+        "source_coord": parse_with_struct(stream, "vec2f"),
+        "target_id": parse_with_struct(stream, "uint32"),
+        "target_coord": parse_with_struct(stream, "vec2f"),
+        "request_id": parse_uuid(stream)
+    }
+
+
+def build_entity_interact(obj: Dict, _) -> bytes:
+    return b"".join([
+        build_with_struct(obj["source_id"], "uint32"),
+        build_with_struct(obj["source_coord"], "vec2f"),
+        build_with_struct(obj["target_id"], "uint32"),
+        build_with_struct(obj["target_coord"], "vec2f"),
+        build_uuid(obj["request_id"])
+    ])
+
+# - Entity Interact Result
+
+
+def parse_entity_interact_result(stream: BinaryIO, _) -> Dict:
+    return {
+        "interaction_type": parse_with_struct(stream, "uint32"),
+        "target_id": parse_with_struct(stream, "uint32"),
+        "entity_data": parse_json(stream),
+        "request_id": parse_uuid(stream)
+    }
+
+
+def build_entity_interact_result(obj: Dict, _) -> bytes:
+    return b"".join([
+        build_with_struct(obj["interaction_type"], "uint32"),
+        build_with_struct(obj["target_id"], "uint32"),
+        build_json(obj["entity_data"]),
+        build_uuid(obj["request_id"])
+    ])
+
+# - Damage Request
+
+
+def parse_damage_request(stream: BinaryIO, _) -> Dict:
+    return {
+        "source_id": parse_with_struct(stream, "int32"),
+        "target_id": parse_with_struct(stream, "int32"),
+        "hit_type": parse_with_struct(stream, "uint32"),
+        "damage_type": parse_byte(stream),
+        "damage": parse_with_struct(stream, "float"),
+        "knockback": parse_with_struct(stream, "vec2f"),
+        "junk?": parse_with_struct(stream, "int32"),  # According to notes, this is the source_id again
+        "damage_source_kind": parse_utf8_string(stream),
+        "status_effects": parse_status_effect_list(stream)
+    }
+
+# - Damage Notification
+
+
+def parse_damage_notification(stream: BinaryIO, _) -> Dict:
+    return {
+        "unknown_a": parse_with_struct(stream, "int16"),  # I have a suspicion these aren't ints, but I don't know what
+        "unknown_b": parse_with_struct(stream, "int16"),  # A is -4 for players or 0 otherwise, and b is the source id,
+        "source_id": parse_signed_vlq(stream),            # but only if it's a monster
+        "target_id": parse_signed_vlq(stream),  # Yes, I know these are int32s above... I dunno either
+        "target_coords": (parse_signed_vlq(stream), parse_signed_vlq(stream)),  # I don't know why but it's true?
+        "damage": parse_with_struct(stream, "float"),
+        "health_lost": parse_with_struct(stream, "float"),
+        "hit_type": parse_with_struct(stream, "int32"),
+        "damage_source_kind": parse_utf8_string(stream),
+        "hit_material_type": parse_utf8_string(stream)
+    }
+
+# - Entity Message
+
+
+def parse_entity_message(stream: BinaryIO, _) -> Dict:
+    res = {}
+    if parse_with_struct(stream, "bool"):  # If True, the target ID is a unique ID instead of a ephemeral one
+        res["target_id"] = parse_utf8_string(stream)
+    else:
+        res["target_id"] = parse_with_struct(stream, "int32")
+    res["message_type"] = parse_utf8_string(stream)
+    res["message_args"] = parse_json_array(stream)
+    res["message_id"] = parse_uuid(stream)
+    res["client_id"] = parse_with_struct(stream, "uint16")  # This is 0 if it's going to a server entity, or the
+    return res                                              # sender's client ID if going to another player
+
+# - Entity Message Response
+
+
+def parse_entity_message_response(stream: BinaryIO, _) -> Dict:
+    res = {}
+    success_level = parse_byte(stream)
+    if success_level == 2:
+        res["result"] = {"error": False, "data": parse_json(stream)}
+    elif success_level == 1:
+        res["result"] = {"error": True, "data": parse_utf8_string(stream)}
+    else:  # Never seen it otherwise, but never hurts to check.
+        raise TypeError(f"Invalid success level {success_level} for EntityMessageResponse.")
+    res["message_id"] = parse_uuid(stream)
+    return res
 # - Step update
 
 
@@ -671,8 +847,10 @@ parse_map = {
     # Simple format here, key is a PacketType (I personally try to keep this in the order of the Enum)
     # Value is a pair of functions, [0] is for reading, [1] is for writing
     # Slap a None in there if you don't have one of these
+    # Connection protocol handshake
     PacketType.PROTOCOL_REQUEST: (parse_protocol_request, None),
     PacketType.PROTOCOL_RESPONSE: (parse_protocol_response, None),
+    # Universe server -> client
     PacketType.SERVER_DISCONNECT: (parse_server_disconnect, build_server_disconnect),
     PacketType.CONNECT_SUCCESS: (parse_connect_success, build_connect_success),
     PacketType.CONNECT_FAILURE: (parse_connect_failure, build_connect_failure),
@@ -680,14 +858,30 @@ parse_map = {
     PacketType.CHAT_RECEIVED: (parse_chat_received, build_chat_received),
     PacketType.UNIVERSE_TIME_UPDATE: (parse_universe_time_update, build_universe_time_update),
     PacketType.PLAYER_WARP_RESULT: (parse_player_warp_result, build_player_warp_result),
-    PacketType.FLY_SHIP: (parse_fly_ship, build_fly_ship),
-    PacketType.CHAT_SENT: (parse_chat_send, build_chat_send),
+    # Universe client -> server
     PacketType.CLIENT_CONNECT: (parse_client_connect, None),
     PacketType.HANDSHAKE_RESPONSE: (parse_handshake_response, None),
     PacketType.PLAYER_WARP: (parse_player_warp, build_player_warp),
+    PacketType.FLY_SHIP: (parse_fly_ship, build_fly_ship),
+    PacketType.CHAT_SENT: (parse_chat_send, build_chat_send),
+    # Universe client <--> server
     PacketType.CLIENT_CONTEXT_UPDATE: (parse_client_context_set, build_client_context_set),
+    # World server -> client
     PacketType.WORLD_START: (parse_world_start, None),
+    PacketType.WORLD_STOP: (parse_world_stop, None),
+    PacketType.GIVE_ITEM: (parse_give_item, None),
+    # World client -> server
+    PacketType.SPAWN_ENTITY: (parse_spawn_entity, build_spawn_entity),
+    # World client <--> server
+    PacketType.ENTITY_INTERACT: (parse_entity_interact, build_entity_interact),
+    PacketType.ENTITY_INTERACT_RESULT: (parse_entity_interact_result, build_entity_interact_result),
+    PacketType.DAMAGE_REQUEST: (parse_damage_request, None),
+    PacketType.DAMAGE_NOTIFICATION: (parse_damage_notification, None),
+    PacketType.ENTITY_MESSAGE: (parse_entity_message, None),
+    PacketType.ENTITY_MESSAGE_RESPONSE: (parse_entity_message_response, None),
     PacketType.STEP_UPDATE: (parse_step_update, None)
+    # System server -> client
+    # System client -> server
 }
 
 c_parse_map = {
@@ -723,7 +917,7 @@ async def parse_packet(packet):
             leftover_data = data_stream.read()
             if leftover_data:
                 parser_logger.debug(f"Packet parsing for type {PacketType(packet.type)} has leftover data! Data:\n"
-                                    f"{hexlify(leftover_data)}")
+                                    f"{hexlify(leftover_data)[:100]}")
         except IndexError:
             packet.parsed_data = {}
     return packet
