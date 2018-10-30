@@ -1,11 +1,12 @@
 import importlib
-import importlib.util
 import logging
 from asyncio import create_task
 from binascii import hexlify
 from inspect import getmembers, isclass, ismethod
 from pathlib import Path
-from pprint import pformat, pprint
+from pprint import pformat
+from sys import modules
+from types import ModuleType
 
 from .command_dispatcher import CommandDispatcher
 from .enums import PacketType
@@ -21,43 +22,39 @@ class PluginManager:
         self.plugins = {}
         self.active_plugins = set()
         self.inactive_plugins = set()
-        self.load_from_path(Path(self.config_manager.config["system_plugin_path"]))
-        self.load_from_path(Path(self.config_manager.config["user_plugin_path"]))
+        self.plugin_package = ModuleType("starrypy_plugins")
+        self.plugin_package.__path__ = []
+        modules["starrypy_plugins"] = self.plugin_package
         self.command_dispatcher = CommandDispatcher(factory)
         self.event_hooks = {packet: [] for packet in PacketType}
-        # Just gonna slot this in here for now. I'm sure it can be done better but this'll work for testing.
-        self.event_hooks[PacketType.CHAT_SENT].append(self.command_dispatcher.command_check)
-        self.resolve_dependencies()
-        additional = (self.factory.player_manager, )
-        self.detect_event_hooks(additional)
+        self.additional_packet_hook_locations = (self.factory.player_manager, self.command_dispatcher)
         self.reaper_task = None
+        # At some point this is going to change with a portable-mode toggle, but for now we just do this
+        self.load_all_plugins((self.config_manager.config["system_plugin_path"],
+                               self.config_manager.config["user_plugin_path"]))
 
-    def load_from_path(self, path):
-        ignores = ("__init__", "__pycache__")
+    def load_all_plugins(self, paths):
+        self.plugin_package.__path__.extend(str(x) for x in paths)
+        for path in paths:
+            self.load_plugin_folder(path)
+        self.detect_event_hooks()
+
+    def load_plugin_folder(self, path):
         loaded = set()
         for file in path.iterdir():
-            if file.stem in ignores:
-                continue
-            if (file.suffix == ".py" or file.is_dir()) and str(file) not in loaded and not file.stem.startswith("_"):
+            if (file.suffix == ".py" or file.is_dir()) and file not in loaded and not file.stem.startswith(("_", ".")):
                 try:
-                    mod = self._load_module(file)
+                    mod = self._load_module(file.stem)
                     self.load_plugin(mod)
-                    loaded.add(str(file))
+                    loaded.add(file)
                 except (SyntaxError, ImportError):
                     self.logger.exception(f"Exception encountered while loading plugin {file.stem}: ", exc_info=True)
                 except FileNotFoundError:
                     self.logger.error(f"File {file.stem} missing when load attempted!")
 
-    def _load_module(self, path):
-        if path.is_dir():
-            path /= "__init__.py"
-        if not path.exists():
-            raise FileNotFoundError
-        name = f"plugins.{path.stem}"
-        spec = importlib.util.spec_from_file_location(name, path)
-        mod = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(mod)
-        self.logger.debug(mod)
+    def _load_module(self, name):
+        mod = importlib.import_module(f"starrypy_plugins.{name}")
+        self.modules[name] = mod
         self.logger.debug(f"Imported module {name}.")
         return mod
 
@@ -72,8 +69,11 @@ class PluginManager:
             self.logger.debug(f"Loaded plugin {obj.name}.")
 
     def _get_plugin_classes(self, mod):
+        def predicate(cls):
+            return isclass(cls) and issubclass(cls, BasePlugin) and cls is not BasePlugin
+
         class_list = set()
-        for name, obj in getmembers(mod, predicate=isclass):
+        for name, obj in getmembers(mod, predicate=predicate):
             if issubclass(obj, BasePlugin) and obj is not BasePlugin:
                 obj.factory = self.factory
                 obj.config_manager = self.config_manager
@@ -81,15 +81,6 @@ class PluginManager:
                 obj.logger = logging.getLogger(f"starrypy.plugin.{obj.name}")
                 class_list.add(obj)
         return class_list
-
-    def resolve_dependencies(self):
-        for plg in self.plugins.values():
-            deps = set(plg.depends)
-            loaded = set(self.plugins.values())
-            if not deps.issubset(loaded):
-                self.logger.error(f"Plugin {plg.name} is missing the following dependencies: {deps - loaded}.\n"
-                                  f"It will not be activated.")
-                del self.plugins[plg.name]
 
     def detect_event_hooks(self, core=tuple()):
         for plg in self.plugins.values():
@@ -140,7 +131,6 @@ class BasePlugin:
     name = "base_plugin"
     description = "Common base class for plugins."
     version = "0.0"
-    depends = ()
     default_config = {}
 
     def activate(self):

@@ -7,7 +7,7 @@ from .spy_utils import read_vlq_signed
 
 
 class Packet:
-    def __init__(self, packet_type: int, data: bytes, direction: int,
+    def __init__(self, packet_type: int, data: bytes, direction: PacketDirection,
                  size: int=None, compressed=False, original_data: bytes=None, parsed_data: dict=None):
         self.type = packet_type
         self.size = size
@@ -24,7 +24,7 @@ class Packet:
         self.build = lambda: build_packet(self)
 
     @classmethod
-    async def from_parsed(cls, packet_type: int, parsed_data: dict, direction: int=0):
+    async def from_parsed(cls, packet_type: int, parsed_data: dict, direction: PacketDirection):
         """
         Takes in parsed packet data (for example, as built by a plugin) and returns a fully-built packet,
         ready for sending.
