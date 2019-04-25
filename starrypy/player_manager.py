@@ -37,7 +37,7 @@ class IP(DeclarativeBase):
     uuid = sqla.Column(sqla.String(32), sqla.ForeignKey("players.uuid"))
     last_seen = sqla.Column(sqla.DateTime)
 
-    player = relationship("Player", back_populates="ips")
+    player = relationship("Player", back_populates="ips", foreign_keys=uuid)
 
     def __repr__(self):
         return "<IP(ip={}, uuid={})>".format(self.ip, self.uuid)
@@ -52,23 +52,23 @@ class Player(DeclarativeBase):
     alias = sqla.Column(sqla.String(24))
     species = sqla.Column(sqla.String(16))
 
-    location = sqla.Column(sqla.String(255))
+    location_str = sqla.Column(sqla.String(255), sqla.ForeignKey("worlds.location_str"))
+    location = relationship("World", foreign_keys=location_str)
+    previous_location_str = sqla.Column(sqla.String(255), sqla.ForeignKey("worlds.location_str"))
+    previous_location = relationship("World", foreign_keys=previous_location_str)
 
     first_seen = sqla.Column(sqla.DateTime)
     last_seen = sqla.Column(sqla.DateTime)
 
     logged_in = sqla.Column(sqla.Boolean)
     client_id = sqla.Column(sqla.Integer)
-    current_ip = sqla.Column(sqla.String(39))
+    ips = relationship("IP")
 
     def __repr__(self):
         return f"<Player(name={self.name}, uuid={self.uuid}, logged_in={self.logged_in})>"
 
     def __str__(self):
         return pprint.pformat(self.__dict__)
-
-
-Player.ips = relationship("IP", order_by=IP.id, back_populates="player")
 
 
 class PlayerManager:
@@ -245,22 +245,6 @@ class PlayerManager:
         await self.close_out(client)
         return True
 
-    # Connected and working
-    @EventHook(PacketType.WORLD_START, priority=1)
-    async def player_arrives(self, packet, client):
-        planet_template = packet.parsed_data["template_data"]["celestialParameters"]
-        if planet_template is not None:
-            coord = planet_template["coordinate"]
-            planet_str = f"CelestialWorld:{coord['location'][0]}:{coord['location'][1]}:{coord['location'][2]}" \
-                         f":{coord['planet']}"
-            if coord["satellite"] > 0:
-                planet_str += ":{coord['satellite']}"
-            self.logger.debug(planet_str)
-            with db_session() as db:
-                client.player.location = planet_str
-                db.commit()
-        return True
-
     async def _add_or_get_player(self, player_uuid=None, player_name=None, player_species=None, ip=None, **kwargs):
         """
         Check if a player is in the database; if they aren't, add them. If
@@ -301,7 +285,6 @@ class PlayerManager:
                 if player.name != player_name:
                     player.name = player_name
                 player.alias = alias
-                player.current_ip = ip
             else:
                 self.logger.info(f"A new player is connecting: {alias} ({player_uuid})")
 
@@ -318,8 +301,7 @@ class PlayerManager:
                                 species=player_species,
                                 first_seen=datetime.now(),
                                 last_seen=datetime.now(),
-                                logged_in=False,
-                                current_ip=ip)
+                                logged_in=False)
                 db.add(player)
             db.commit()
 
@@ -379,7 +361,7 @@ class PlayerManager:
     async def _check_species(self, client):
         species = client.player.species
         if species not in self.config_manager.config["player_manager"]["allowed_species"]:
-            message = f"^red;Your characters species \"{species}\" is not allowed on this server!"
+            message = f"^red;Your character's species \"{species}\" is not allowed on this server!"
             await self.write_rejection(client, message)
             return True
         return False

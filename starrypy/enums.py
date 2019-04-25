@@ -122,6 +122,7 @@ class WarpType(IntEnum):
 
 
 class WarpWorldType(IntEnum):
+    NONE = 0
     CELESTIAL_WORLD = 1
     SHIP_WORLD = 2
     UNIQUE_WORLD = 3

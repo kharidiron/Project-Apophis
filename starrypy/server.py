@@ -8,6 +8,7 @@ from .plugin_manager import PluginManager
 from .packet import read_packet, Packet
 from .storage_manager import StorageManager
 from .player_manager import PlayerManager
+from .world_manager import WorldManager
 
 
 class ClientSideConnectionFactory:
@@ -19,6 +20,7 @@ class ClientSideConnectionFactory:
         self.config_manager = config_manager
         self.storage_manager = StorageManager(self)
         self.player_manager = PlayerManager(self)
+        self.world_manager = WorldManager(self)
         self.plugin_manager = PluginManager(self)
 
     def __call__(self, reader, writer):

@@ -27,7 +27,8 @@ class PluginManager:
         modules["starrypy_plugins"] = self.plugin_package
         self.command_dispatcher = CommandDispatcher(factory)
         self.event_hooks = {packet: [] for packet in PacketType}
-        self.additional_packet_hook_locations = (self.factory.player_manager, self.command_dispatcher)
+        self.additional_packet_hook_locations = (self.factory.player_manager, self.factory.world_manager,
+                                                 self.command_dispatcher)
         self.reaper_task = None
         # At some point this is going to change with a portable-mode toggle, but for now we just do this
         self.load_all_plugins((self.config_manager.config["system_plugin_path"],
@@ -37,7 +38,7 @@ class PluginManager:
         self.plugin_package.__path__.extend(str(x) for x in paths)
         for path in paths:
             self.load_plugin_folder(path)
-        self.detect_event_hooks()
+        self.detect_event_hooks(core=self.additional_packet_hook_locations)
 
     def load_plugin_folder(self, path):
         loaded = set()

@@ -341,15 +341,23 @@ def parse_warp_action(stream: BinaryIO) -> Dict:
         res["world_type"] = world_type
         if world_type == WarpWorldType.CELESTIAL_WORLD:
             res["celestial_coordinates"] = parse_celestial_coordinates(stream)
-            res["teleporter"] = parse_maybe(stream, parse_utf8_string)
+            warp_position = parse_byte(stream)
+            if warp_position == 1:
+                res["teleporter_id"] = parse_utf8_string(stream)
+            elif warp_position == 2:
+                res["coordinates"] = parse_with_struct(stream, "vec2ui")
         elif world_type == WarpWorldType.SHIP_WORLD:
             res["ship_owner"] = parse_uuid(stream)
             res["start_position"] = parse_maybe(stream, lambda x: parse_with_struct(x, "vec2ui"))
         elif world_type == WarpWorldType.UNIQUE_WORLD:
-            res["world_name"] = parse_utf8_string(stream)
+            res["instance_type"] = parse_utf8_string(stream)
             res["instance_id"] = parse_maybe(stream, parse_uuid)
             res["level"] = parse_maybe(stream, lambda x: parse_with_struct(x, "float"))
-            res["teleporter_id"] = parse_maybe(stream, parse_utf8_string)
+            warp_position = parse_byte(stream)
+            if warp_position == 1:
+                res["teleporter_id"] = parse_utf8_string(stream)
+            elif warp_position == 2:
+                res["coordinates"] = parse_with_struct(stream, "vec2ui")
         else:
             raise TypeError(f"World warp type {world_type} is not defined for parsing!")
 
@@ -374,7 +382,12 @@ def build_warp_action(obj: Dict) -> bytes:
         res += build_byte(world_type)
         if world_type == WarpWorldType.CELESTIAL_WORLD:
             res += build_celestial_coordinates(obj["celestial_coordinates"])
-            res += build_maybe(obj["teleporter"], build_utf8_string)
+            if obj["teleporter_id"]:
+                res += b"\x01" + build_utf8_string(obj["teleporter_id"])
+            elif obj["coordinates"]:
+                res += b"\x02" + build_with_struct(obj["coordinates"], "vec2ui")
+            else:
+                res += b"\x00"
         elif world_type == WarpWorldType.SHIP_WORLD:
             res += build_uuid(obj["ship_owner"])
             res += build_maybe(obj["start_position"], lambda x: build_with_struct(x, "vec2ui"))
@@ -382,10 +395,15 @@ def build_warp_action(obj: Dict) -> bytes:
             data_li = (
                 build_utf8_string(obj["world_name"]),
                 build_maybe(obj["instance_id"], build_uuid),
-                build_maybe(obj["level"], lambda x: build_with_struct(x, "float")),
-                build_maybe(obj["teleporter_id"], build_utf8_string)
+                build_maybe(obj["level"], lambda x: build_with_struct(x, "float"))
             )
             res += b"".join(data_li)
+            if obj["teleporter_id"]:
+                res += b"\x01" + build_utf8_string(obj["teleporter_id"])
+            elif obj["coordinates"]:
+                res += b"\x02" + build_with_struct(obj["coordinates"], "vec2ui")
+            else:
+                res += b"\x00"
         else:
             raise TypeError(f"World warp type {world_type} is not defined for parsing!")
 
