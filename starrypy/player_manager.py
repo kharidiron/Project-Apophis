@@ -136,8 +136,6 @@ class PlayerManager:
 
         banned = await self._check_bans(client)
 
-        # TODO: Check for valid species
-
         species_rejected = await self._check_species(client)
 
         return not (banned or species_rejected)
@@ -223,6 +221,7 @@ class PlayerManager:
     #     return True
 
     # Disconnecting
+
     @EventHook(PacketType.CLIENT_DISCONNECT_REQUEST)
     async def disconnect_a(self, packet, client):
         """
