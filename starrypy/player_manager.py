@@ -107,6 +107,12 @@ class PlayerManager:
         client.connection_state = ConnectionState.VERSION_OK_WITH_SERVER
         return True
 
+    # @EventHook(PacketType.SERVER_INFO)
+    # async def connection_step_2a(self, packet, client):
+    #     self.logger.debug("C <- S: Client Connect")
+    #     self.logger.debug(packet)
+    #     return True
+
     @EventHook(PacketType.CLIENT_CONNECT)
     async def connection_step_3(self, packet, client):
         """

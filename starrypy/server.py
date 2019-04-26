@@ -2,7 +2,6 @@ import asyncio
 import logging
 from traceback import format_exception
 
-from .enums import PacketDirection
 from .enums import PacketDirection, PacketType, ChatReceiveMode
 from .plugin_manager import PluginManager
 from .packet import read_packet, Packet

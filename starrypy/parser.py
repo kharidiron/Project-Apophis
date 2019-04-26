@@ -561,6 +561,15 @@ def build_chat_received(obj: Dict, _) -> bytes:
     res += build_utf8_string(obj["message"])
     return res
 
+# - Server info
+
+
+def parse_server_info(stream: BinaryIO, _) -> Dict:
+    return {
+        "players": parse_with_struct(stream, "uint16"),
+        "max_players": parse_with_struct(stream, "uint16")
+    }
+
 # - Universe time update
 
 
@@ -876,6 +885,7 @@ parse_map = {
     PacketType.CHAT_RECEIVED: (parse_chat_received, build_chat_received),
     PacketType.UNIVERSE_TIME_UPDATE: (parse_universe_time_update, build_universe_time_update),
     PacketType.PLAYER_WARP_RESULT: (parse_player_warp_result, build_player_warp_result),
+    # PacketType.SERVER_INFO: (parse_server_info, None),
     # Universe client -> server
     PacketType.CLIENT_CONNECT: (parse_client_connect, None),
     PacketType.HANDSHAKE_RESPONSE: (parse_handshake_response, None),

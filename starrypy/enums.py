@@ -16,7 +16,7 @@ class PacketType(IntEnum):
     PLAYER_WARP_RESULT = auto()
     PLANET_TYPE_UPDATE = auto()
     PAUSE = auto()
-    SERVER_INFO = auto()
+    # SERVER_INFO = auto()
     # Universe; client -> server
     CLIENT_CONNECT = auto()
     CLIENT_DISCONNECT_REQUEST = auto()
